@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://sonar.fun/sitemap.xml
+Sitemap: https://sonar-website-chi.vercel.app/sitemap.xml
