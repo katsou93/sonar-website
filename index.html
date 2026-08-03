@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SONAR — Sieh die Welle, bevor sie bricht</title>
+<meta name="description" content="SONAR erkennt Memecoin-Narrative auf X und Telegram, während sie entstehen. Trend Radar, Risiko-Ampel und Smart-Money-Tracking für Solana — ein Screen statt acht Tabs.">
+<meta name="theme-color" content="#07070a">
+<meta name="robots" content="index,follow">
+<link rel="canonical" href="https://sonar.fun/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="SONAR">
+<meta property="og:locale" content="de_DE">
+<meta property="og:title" content="SONAR — Sieh die Welle, bevor sie bricht">
+<meta property="og:description" content="Memecoin-Narrative erkennen, bevor der Chart senkrecht steht. Trend Radar, Risiko-Ampel und Smart Money für Solana.">
+<meta property="og:image" content="https://sonar.fun/assets/og-image.png">
+<meta property="og:url" content="https://sonar.fun/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="SONAR — Sieh die Welle, bevor sie bricht">
+<meta name="twitter:description" content="Memecoin-Narrative erkennen, bevor der Chart senkrecht steht. Ein Screen statt acht Tabs.">
+<meta name="twitter:image" content="https://sonar.fun/assets/og-image.png">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 26'%3E%3Ccircle cx='13' cy='13' r='11.5' fill='none' stroke='%2314f195' stroke-opacity='.35'/%3E%3Ccircle cx='13' cy='13' r='7' fill='none' stroke='%2314f195' stroke-opacity='.6'/%3E%3Ccircle cx='13' cy='13' r='2.6' fill='%2314f195'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#07070a; --bg2:#0b0c11; --panel:#101119; --panel2:#15161f;
+  --border:rgba(255,255,255,.08); --border2:rgba(255,255,255,.14);
+  --tx:#eceef3; --mu:#8a8d9c; --mu2:#5c5f6e;
+  --grn:#14f195; --prp:#9945ff; --red:#ff4d6a; --yel:#ffc531; --blu:#3b9dff;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--tx);font-family:var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden;line-height:1.5}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+
+/* ---------- glow bg ---------- */
+.glow{position:fixed;inset:0;pointer-events:none;z-index:0}
+.glow::before,.glow::after{content:"";position:absolute;border-radius:50%;filter:blur(120px);opacity:.16}
+.glow::before{width:700px;height:700px;background:var(--prp);top:-280px;left:-140px}
+.glow::after{width:600px;height:600px;background:var(--grn);top:-200px;right:-160px;opacity:.10}
+.grid-bg{position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:linear-gradient(rgba(255,255,255,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px);
+  background-size:56px 56px;mask-image:radial-gradient(ellipse 90% 55% at 50% 0%,#000 30%,transparent 78%)}
+main,nav,footer{position:relative;z-index:1}
+
+/* ---------- nav ---------- */
+nav{position:sticky;top:0;z-index:60;backdrop-filter:blur(16px);background:rgba(7,7,10,.72);border-bottom:1px solid var(--border)}
+.nav{display:flex;align-items:center;justify-content:space-between;height:64px}
+.logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;letter-spacing:-.02em}
+.logo-mark{width:26px;height:26px;position:relative;flex:0 0 26px}
+.nav-links{display:flex;gap:28px;font-size:14px;color:var(--mu)}
+.nav-links a:hover{color:var(--tx)}
+.nav-cta{display:flex;gap:10px;align-items:center}
+
+/* ---------- buttons ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;cursor:pointer;font-family:inherit;
+  font-size:14px;font-weight:600;padding:10px 18px;border-radius:9px;transition:.16s;white-space:nowrap}
+.btn-p{background:var(--grn);color:#04120c}
+.btn-p:hover{background:#3ff7ac;transform:translateY(-1px);box-shadow:0 8px 26px rgba(20,241,149,.24)}
+.btn-g{background:rgba(255,255,255,.05);color:var(--tx);border:1px solid var(--border2)}
+.btn-g:hover{background:rgba(255,255,255,.09)}
+.btn-lg{padding:14px 26px;font-size:15px;border-radius:11px}
+
+/* ---------- hero ---------- */
+.hero{padding:88px 0 0;text-align:center}
+.pill{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border:1px solid var(--border2);border-radius:99px;
+  font-size:12.5px;color:var(--mu);background:rgba(255,255,255,.03);margin-bottom:26px}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--grn);box-shadow:0 0 0 0 rgba(20,241,149,.6);animation:pulse 2s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(20,241,149,.55)}70%{box-shadow:0 0 0 9px rgba(20,241,149,0)}100%{box-shadow:0 0 0 0 rgba(20,241,149,0)}}
+h1{font-size:clamp(38px,6.2vw,68px);line-height:1.04;letter-spacing:-.035em;font-weight:800;margin-bottom:22px}
+.grad{background:linear-gradient(100deg,var(--grn),var(--blu) 45%,var(--prp));-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{font-size:clamp(16px,2vw,19px);color:var(--mu);max-width:620px;margin:0 auto 34px;line-height:1.6}
+.hero-cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:14px}
+.microcopy{font-size:12.5px;color:var(--mu2)}
+
+/* ---------- browser frame ---------- */
+.frame{border:1px solid var(--border2);border-radius:14px;overflow:hidden;background:var(--bg2);
+  box-shadow:0 40px 100px -20px rgba(0,0,0,.85),0 0 0 1px rgba(255,255,255,.03)}
+.frame-bar{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#0d0e14;border-bottom:1px solid var(--border)}
+.tl{display:flex;gap:6px}.tl i{width:11px;height:11px;border-radius:50%;display:block}
+.url{flex:1;text-align:center;font-family:var(--mono);font-size:11.5px;color:var(--mu2);
+  background:rgba(255,255,255,.04);padding:4px 12px;border-radius:6px;max-width:300px;margin:0 auto}
+.shot-wrap{margin-top:56px;perspective:1600px}
+.shot-tilt{transform:rotateX(6deg);transform-origin:top center}
+
+/* ---------- app mockup internals ---------- */
+.app{display:grid;grid-template-columns:190px 1fr;min-height:520px;font-size:13px}
+.side{background:#0a0b11;border-right:1px solid var(--border);padding:16px 12px;display:flex;flex-direction:column;gap:3px}
+.side-h{font-size:10px;text-transform:uppercase;letter-spacing:.11em;color:var(--mu2);padding:12px 10px 6px}
+.si{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:7px;color:var(--mu);font-size:13px}
+.si.on{background:rgba(20,241,149,.09);color:var(--grn)}
+.si-i{width:15px;height:15px;flex:0 0 15px;opacity:.8}
+.body{padding:18px 20px;overflow:hidden}
+.bh{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px}
+.bh h3{font-size:16px;font-weight:650;letter-spacing:-.01em}
+.bh .sublabel{font-size:11.5px;color:var(--mu2);margin-top:3px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);color:var(--mu);background:rgba(255,255,255,.02)}
+.chip.on{border-color:rgba(20,241,149,.35);color:var(--grn);background:rgba(20,241,149,.07)}
+
+table{width:100%;border-collapse:collapse}
+th{font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--mu2);text-align:left;padding:0 10px 9px;font-weight:600}
+td{padding:11px 10px;border-top:1px solid rgba(255,255,255,.05);vertical-align:middle}
+tbody tr:hover{background:rgba(255,255,255,.022)}
+.tok{display:flex;align-items:center;gap:10px}
+.av{width:28px;height:28px;border-radius:8px;flex:0 0 28px;display:grid;place-items:center;font-size:12px;font-weight:700;color:#06070a}
+.tk{font-weight:650;font-size:13px;letter-spacing:-.01em}
+.tn{font-size:11px;color:var(--mu2)}
+.mono{font-family:var(--mono);font-size:12.5px}
+.up{color:var(--grn)}.dn{color:var(--red)}
+.heat{display:flex;align-items:center;gap:8px}
+.bar{width:52px;height:5px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:3px}
+.badge{font-size:10px;font-weight:700;padding:3px 8px;border-radius:5px;letter-spacing:.02em;white-space:nowrap}
+.b-g{background:rgba(20,241,149,.13);color:var(--grn)}
+.b-y{background:rgba(255,197,49,.13);color:var(--yel)}
+.b-r{background:rgba(255,77,106,.13);color:var(--red)}
+.b-p{background:rgba(153,69,255,.15);color:#c497ff}
+.b-b{background:rgba(59,157,255,.13);color:var(--blu)}
+.age{font-family:var(--mono);font-size:11.5px;color:var(--mu)}
+
+/* ---------- sections ---------- */
+section{padding:104px 0}
+.sec-h{text-align:center;max-width:680px;margin:0 auto 56px}
+.eyebrow{font-size:12px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--grn);margin-bottom:14px}
+h2{font-size:clamp(28px,4vw,44px);letter-spacing:-.03em;line-height:1.12;font-weight:750;margin-bottom:16px}
+.sec-h p{color:var(--mu);font-size:16.5px;line-height:1.65}
+
+/* stats */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.stat{background:var(--bg2);padding:26px 20px;text-align:center}
+.stat b{display:block;font-size:30px;font-weight:750;letter-spacing:-.03em;margin-bottom:5px;font-family:var(--mono)}
+.stat span{font-size:12.5px;color:var(--mu)}
+
+/* problem */
+.prob{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
+.tabs-mess{display:flex;flex-wrap:wrap;gap:8px}
+.tabx{display:flex;align-items:center;gap:7px;padding:8px 13px;border:1px solid var(--border);border-radius:8px;
+  font-size:12.5px;color:var(--mu);background:var(--panel)}
+.tabx s{width:6px;height:6px;border-radius:50%;background:var(--red);display:block}
+.arrow-down{text-align:center;font-size:26px;color:var(--mu2);margin:22px 0}
+.one-tab{display:inline-flex;align-items:center;gap:9px;padding:13px 20px;border:1px solid rgba(20,241,149,.4);border-radius:10px;
+  background:rgba(20,241,149,.06);font-size:14px;font-weight:600;color:var(--grn)}
+.prob-list{display:flex;flex-direction:column;gap:20px}
+.pl{display:flex;gap:14px}
+.pl-n{font-family:var(--mono);font-size:12px;color:var(--grn);padding-top:2px;flex:0 0 22px}
+.pl h4{font-size:16px;font-weight:650;margin-bottom:5px;letter-spacing:-.01em}
+.pl p{font-size:14px;color:var(--mu);line-height:1.6}
+
+/* feature blocks */
+.feat{display:grid;grid-template-columns:1fr 1.25fr;gap:60px;align-items:center;margin-bottom:112px}
+.feat.rev{grid-template-columns:1.25fr 1fr}
+.feat.rev .feat-txt{order:2}
+.feat-txt .eyebrow{margin-bottom:12px}
+.feat-txt h3{font-size:clamp(24px,3vw,34px);letter-spacing:-.028em;line-height:1.15;margin-bottom:14px;font-weight:730}
+.feat-txt>p{color:var(--mu);font-size:16px;line-height:1.68;margin-bottom:22px}
+.ticks{display:flex;flex-direction:column;gap:11px}
+.tick{display:flex;gap:11px;font-size:14.5px;color:#c8cad4;align-items:flex-start}
+.tick svg{flex:0 0 17px;margin-top:2px}
+
+/* cards grid */
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:26px;transition:.2s}
+.card:hover{border-color:var(--border2);transform:translateY(-3px);background:var(--panel2)}
+.card-i{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;margin-bottom:16px;background:rgba(255,255,255,.05)}
+.card h4{font-size:16.5px;font-weight:650;margin-bottom:8px;letter-spacing:-.015em}
+.card p{font-size:14px;color:var(--mu);line-height:1.62}
+
+/* steps */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;counter-reset:s}
+.step{position:relative;padding:30px 24px;border:1px solid var(--border);border-radius:14px;background:var(--panel)}
+.step::before{counter-increment:s;content:"0" counter(s);font-family:var(--mono);font-size:34px;font-weight:700;
+  color:transparent;-webkit-text-stroke:1.2px rgba(255,255,255,.16);display:block;margin-bottom:14px}
+.step h4{font-size:17px;margin-bottom:8px;font-weight:650}
+.step p{font-size:14px;color:var(--mu);line-height:1.6}
+
+/* pricing */
+.prices{display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:800px;margin:0 auto}
+.price{border:1px solid var(--border);border-radius:16px;padding:32px;background:var(--panel);position:relative}
+.price.hi{border-color:rgba(20,241,149,.35);background:linear-gradient(180deg,rgba(20,241,149,.05),transparent 60%),var(--panel)}
+.price-tag{position:absolute;top:-11px;right:24px;font-size:10.5px;font-weight:700;letter-spacing:.06em;
+  background:var(--grn);color:#04120c;padding:4px 11px;border-radius:6px}
+.price h4{font-size:15px;color:var(--mu);font-weight:600;margin-bottom:10px;letter-spacing:.02em}
+.price .amt{font-size:42px;font-weight:750;letter-spacing:-.035em;font-family:var(--mono);margin-bottom:6px}
+.price .amt small{font-size:15px;color:var(--mu);font-weight:500;font-family:var(--sans)}
+.price>p{font-size:13.5px;color:var(--mu2);margin-bottom:24px}
+.price ul{list-style:none;display:flex;flex-direction:column;gap:11px;margin-bottom:26px}
+.price li{font-size:14px;display:flex;gap:10px;color:#c8cad4;align-items:flex-start}
+.price li svg{flex:0 0 16px;margin-top:2px}
+
+/* faq */
+.faq{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+details{border:1px solid var(--border);border-radius:11px;background:var(--panel);overflow:hidden}
+details[open]{border-color:var(--border2)}
+summary{padding:18px 22px;cursor:pointer;font-size:15.5px;font-weight:600;list-style:none;display:flex;justify-content:space-between;gap:16px;align-items:center}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"+";font-size:20px;color:var(--mu2);font-weight:400;flex:0 0 auto}
+details[open] summary::after{content:"−"}
+details p{padding:0 22px 20px;font-size:14.5px;color:var(--mu);line-height:1.68}
+
+/* cta */
+.cta-box{border:1px solid var(--border2);border-radius:20px;padding:60px 40px;text-align:center;
+  background:radial-gradient(ellipse 70% 100% at 50% 0%,rgba(20,241,149,.08),transparent 70%),var(--panel)}
+.form{display:flex;gap:10px;max-width:440px;margin:26px auto 14px}
+.form input{flex:1;background:rgba(255,255,255,.04);border:1px solid var(--border2);border-radius:10px;
+  padding:13px 16px;color:var(--tx);font-size:14.5px;font-family:inherit;outline:none}
+.form input:focus{border-color:rgba(20,241,149,.5)}
+.form input::placeholder{color:var(--mu2)}
+
+/* footer */
+footer{border-top:1px solid var(--border);padding:52px 0 34px;margin-top:40px}
+.f-top{display:flex;justify-content:space-between;gap:40px;flex-wrap:wrap;margin-bottom:38px}
+.f-col h5{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--mu2);margin-bottom:14px}
+.f-col a{display:block;font-size:14px;color:var(--mu);margin-bottom:9px}
+.f-col a:hover{color:var(--tx)}
+.disc{font-size:12px;color:var(--mu2);line-height:1.7;border-top:1px solid var(--border);padding-top:24px}
+
+/* modal */
+.ov{position:fixed;inset:0;background:rgba(4,4,7,.86);backdrop-filter:blur(6px);z-index:200;display:none;
+  align-items:center;justify-content:center;padding:24px}
+.ov.on{display:flex}
+.modal{background:var(--panel);border:1px solid var(--border2);border-radius:18px;padding:34px;max-width:430px;width:100%;text-align:center}
+.modal h3{font-size:22px;letter-spacing:-.02em;margin-bottom:10px}
+.modal p{font-size:14.5px;color:var(--mu);line-height:1.6;margin-bottom:22px}
+.x{position:absolute;top:20px;right:24px;font-size:26px;color:var(--mu);cursor:pointer;line-height:1}
+
+/* demo overlay */
+.demo-ov{position:fixed;inset:0;background:rgba(4,4,7,.94);backdrop-filter:blur(10px);z-index:190;display:none;
+  padding:28px;overflow:auto}
+.demo-ov.on{display:block}
+.demo-inner{max-width:1120px;margin:0 auto}
+.demo-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;gap:16px;flex-wrap:wrap}
+.demo-head h3{font-size:19px;letter-spacing:-.02em}
+.demo-head p{font-size:13px;color:var(--mu2);margin-top:3px}
+.dtabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+.dtab{font-size:13px;padding:8px 15px;border-radius:8px;border:1px solid var(--border);background:var(--panel);
+  color:var(--mu);cursor:pointer;font-family:inherit;transition:.15s}
+.dtab.on{border-color:rgba(20,241,149,.4);color:var(--grn);background:rgba(20,241,149,.07)}
+.dpane{display:none}.dpane.on{display:block}
+
+/* token detail mock */
+.tdetail{display:grid;grid-template-columns:1.4fr 1fr;gap:16px}
+.pan{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:16px}
+.pan-h{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--mu2);margin-bottom:13px;font-weight:600}
+.kv{display:flex;justify-content:space-between;padding:7px 0;font-size:13px;border-bottom:1px solid rgba(255,255,255,.04)}
+.kv:last-child{border:0}.kv span{color:var(--mu)}.kv b{font-family:var(--mono);font-weight:600;font-size:12.5px}
+.score-ring{display:flex;align-items:center;gap:16px;margin-bottom:14px}
+.ring{width:70px;height:70px;flex:0 0 70px;position:relative}
+.ring b{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--mono);font-size:19px;font-weight:700}
+.ai-box{background:rgba(153,69,255,.07);border:1px solid rgba(153,69,255,.22);border-radius:10px;padding:14px;margin-top:14px}
+.ai-h{display:flex;align-items:center;gap:7px;font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:#c497ff;margin-bottom:9px;font-weight:600}
+.ai-box p{font-size:13.5px;line-height:1.62;color:#d3d5de}
+.wl{display:flex;align-items:center;gap:11px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:12.5px}
+.wl:last-child{border:0}
+.wdot{width:24px;height:24px;border-radius:7px;flex:0 0 24px;display:grid;place-items:center;font-size:10px;font-weight:700;color:#06070a}
+
+/* tg mock */
+.tg{max-width:400px;margin:0 auto;background:#0d1218;border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.tg-h{background:#141b23;padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)}
+.tg-b{padding:16px;display:flex;flex-direction:column;gap:10px}
+.msg{background:#182028;border-radius:12px 12px 12px 3px;padding:12px 14px;font-size:13px;line-height:1.55;max-width:92%}
+.msg .t{font-size:11px;color:var(--mu2);margin-top:7px;text-align:right}
+.msg.me{background:#1f4a3a;align-self:flex-end;border-radius:12px 12px 3px 12px}
+.msg b{color:var(--grn)}
+
+/* call card mock */
+.callcard{max-width:400px;margin:0 auto;border-radius:16px;padding:28px;text-align:center;
+  background:linear-gradient(150deg,#0d1b16,#0a0b11 60%);border:1px solid rgba(20,241,149,.3)}
+.callcard .pnl{font-family:var(--mono);font-size:46px;font-weight:800;color:var(--grn);letter-spacing:-.03em;margin:14px 0 6px}
+.callcard .rng{font-family:var(--mono);font-size:13px;color:var(--mu);margin-bottom:20px}
+.callcard .who{display:flex;align-items:center;justify-content:center;gap:9px;font-size:13px;color:var(--mu);
+  border-top:1px solid rgba(255,255,255,.07);padding-top:16px}
+
+@media(max-width:900px){
+  .nav-links{display:none}
+  .prob,.feat,.feat.rev{grid-template-columns:1fr;gap:36px}
+  .feat.rev .feat-txt{order:0}
+  .cards,.steps{grid-template-columns:1fr}
+  .stats{grid-template-columns:1fr 1fr}
+  .prices{grid-template-columns:1fr}
+  .app{grid-template-columns:1fr}.side{display:none}
+  .tdetail{grid-template-columns:1fr}
+  .shot-tilt{transform:none}
+  section{padding:72px 0}
+  .hide-sm{display:none}
+}
+</style>
+</head>
+<body>
+<div class="glow"></div><div class="grid-bg"></div>
+
+<!-- ============ NAV ============ -->
+<nav>
+  <div class="wrap nav">
+    <div class="logo">
+      <svg class="logo-mark" viewBox="0 0 26 26" fill="none">
+        <circle cx="13" cy="13" r="11.5" stroke="#14f195" stroke-opacity=".28"/>
+        <circle cx="13" cy="13" r="7" stroke="#14f195" stroke-opacity=".5"/>
+        <circle cx="13" cy="13" r="2.6" fill="#14f195"/>
+        <path d="M13 13L21.5 6" stroke="#14f195" stroke-width="1.3" stroke-linecap="round"/>
+      </svg>
+      SONAR
+    </div>
+    <div class="nav-links">
+      <a href="#produkt">Produkt</a>
+      <a href="#features">Features</a>
+      <a href="#preise">Preise</a>
+      <a href="#faq">FAQ</a>
+    </div>
+    <div class="nav-cta">
+      <button class="btn btn-g hide-sm" onclick="openDemo()">Live-Vorschau</button>
+      <button class="btn btn-p" onclick="openModal()">Anmelden</button>
+    </div>
+  </div>
+</nav>
+
+<main>
+<!-- ============ HERO ============ -->
+<div class="wrap hero">
+  <div class="pill"><span class="dot"></span> 4.812 neue Token in den letzten 24 h gescannt</div>
+  <h1>Sieh die Welle,<br><span class="grad">bevor sie bricht.</span></h1>
+  <p class="sub">
+    SONAR erkennt Memecoin-Narrative auf X und Telegram, während sie entstehen — nicht wenn der Chart
+    schon senkrecht steht. Ein Screen statt acht Tabs. Mit Risiko-Check, Smart-Money-Tracking und
+    Klartext-Erklärung, <em>warum</em> sich gerade etwas bewegt.
+  </p>
+  <div class="hero-cta">
+    <button class="btn btn-p btn-lg" onclick="openModal()">Kostenlos anmelden →</button>
+    <button class="btn btn-g btn-lg" onclick="openDemo()">Produkt ansehen</button>
+  </div>
+  <p class="microcopy">Kostenlos starten · Keine Wallet-Verbindung · Kein Trade läuft über uns</p>
+</div>
+
+<!-- ============ HERO SHOT ============ -->
+<div class="wrap shot-wrap" id="produkt">
+ <div class="shot-tilt">
+  <div class="frame">
+    <div class="frame-bar">
+      <div class="tl"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>
+      <div class="url">app.sonar.fun/radar</div>
+    </div>
+    <div class="app">
+      <aside class="side">
+        <div class="side-h">Discovery</div>
+        <div class="si on">
+          <svg class="si-i" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6.5"/><circle cx="8" cy="8" r="2.6"/></svg>
+          Trend Radar</div>
+        <div class="si">
+          <svg class="si-i" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12l3.5-4.5 3 3L14 4"/></svg>
+          Neue Paare</div>
+        <div class="si">
+          <svg class="si-i" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1.8l5.5 2.4v4c0 3.2-2.3 5.6-5.5 6.4-3.2-.8-5.5-3.2-5.5-6.4v-4z"/></svg>
+          Risiko-Scanner</div>
+        <div class="side-h">Tracking</div>
+        <div class="si">
+          <svg class="si-i" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6" cy="5.5" r="2.4"/><path d="M1.8 13.5c0-2.4 1.9-3.9 4.2-3.9s4.2 1.5 4.2 3.9"/><path d="M11.5 6.5h3M13 5v3"/></svg>
+          Smart Money</div>
+        <div class="si">
+          <svg class="si-i" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v1M3.5 6.5a4.5 4.5 0 019 0c0 3 1.5 4 1.5 4H2s1.5-1 1.5-4z"/><path d="M6.5 13.5a1.7 1.7 0 003 0"/></svg>
+          Meine Alerts</div>
+        <div class="si">
+          <svg class="si-i" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1.5l1.9 4.2 4.6.5-3.4 3.1.9 4.5L8 11.6l-4 2.2.9-4.5-3.4-3.1 4.6-.5z"/></svg>
+          Watchlist</div>
+        <div class="side-h">Community</div>
+        <div class="si">
+          <svg class="si-i" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 13V8M6.5 13V4M10.5 13V6.5M14 13V2.5"/></svg>
+          Leaderboard</div>
+      </aside>
+
+      <div class="body">
+        <div class="bh">
+          <div>
+            <h3>Trend Radar</h3>
+            <div class="sublabel">Narrative nach Mention-Beschleunigung · aktualisiert alle 15 Sek.</div>
+          </div>
+          <div class="chips">
+            <span class="chip on">15 Min</span><span class="chip">1 Std</span>
+            <span class="chip">6 Std</span><span class="chip">Nur ungerugged</span>
+          </div>
+        </div>
+
+        <table>
+          <thead><tr>
+            <th style="width:30%">Token</th><th>Heat</th><th>Mentions</th>
+            <th>MCap</th><th>15m</th><th>Alter</th><th>Risiko</th><th>Smart $</th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td><div class="tok"><div class="av" style="background:linear-gradient(135deg,#14f195,#00b4ff)">N</div>
+                <div><div class="tk">$NYAN</div><div class="tn">Nyan Renaissance</div></div></div></td>
+              <td><div class="heat"><div class="bar"><i style="width:94%;background:var(--grn)"></i></div><span class="mono up">94</span></div></td>
+              <td><span class="mono">12 → 187</span></td>
+              <td><span class="mono">$412K</span></td>
+              <td><span class="mono up">+284%</span></td>
+              <td><span class="age">41 m</span></td>
+              <td><span class="badge b-g">Sauber</span></td>
+              <td><span class="badge b-b">7 Wallets</span></td>
+            </tr>
+            <tr>
+              <td><div class="tok"><div class="av" style="background:linear-gradient(135deg,#ffc531,#ff7a3d)">G</div>
+                <div><div class="tk">$GIGA</div><div class="tn">Gigabrain</div></div></div></td>
+              <td><div class="heat"><div class="bar"><i style="width:81%;background:var(--grn)"></i></div><span class="mono up">81</span></div></td>
+              <td><span class="mono">34 → 141</span></td>
+              <td><span class="mono">$1.8M</span></td>
+              <td><span class="mono up">+62%</span></td>
+              <td><span class="age">3 h</span></td>
+              <td><span class="badge b-g">Sauber</span></td>
+              <td><span class="badge b-b">4 Wallets</span></td>
+            </tr>
+            <tr>
+              <td><div class="tok"><div class="av" style="background:linear-gradient(135deg,#9945ff,#ff4d9d)">M</div>
+                <div><div class="tk">$MOOD</div><div class="tn">Mood Cycle</div></div></div></td>
+              <td><div class="heat"><div class="bar"><i style="width:73%;background:var(--yel)"></i></div><span class="mono" style="color:var(--yel)">73</span></div></td>
+              <td><span class="mono">8 → 96</span></td>
+              <td><span class="mono">$204K</span></td>
+              <td><span class="mono up">+119%</span></td>
+              <td><span class="age">18 m</span></td>
+              <td><span class="badge b-y">Prüfen</span></td>
+              <td><span class="badge b-b">2 Wallets</span></td>
+            </tr>
+            <tr>
+              <td><div class="tok"><div class="av" style="background:linear-gradient(135deg,#3b9dff,#14f195)">P</div>
+                <div><div class="tk">$PLNK</div><div class="tn">Plankton</div></div></div></td>
+              <td><div class="heat"><div class="bar"><i style="width:66%;background:var(--yel)"></i></div><span class="mono" style="color:var(--yel)">66</span></div></td>
+              <td><span class="mono">21 → 78</span></td>
+              <td><span class="mono">$860K</span></td>
+              <td><span class="mono up">+31%</span></td>
+              <td><span class="age">6 h</span></td>
+              <td><span class="badge b-g">Sauber</span></td>
+              <td><span class="badge b-b">3 Wallets</span></td>
+            </tr>
+            <tr style="opacity:.55">
+              <td><div class="tok"><div class="av" style="background:linear-gradient(135deg,#ff4d6a,#7a2233)">S</div>
+                <div><div class="tk">$SAFEX</div><div class="tn">SafeMoonX</div></div></div></td>
+              <td><div class="heat"><div class="bar"><i style="width:88%;background:var(--red)"></i></div><span class="mono dn">88</span></div></td>
+              <td><span class="mono">4 → 310</span></td>
+              <td><span class="mono">$97K</span></td>
+              <td><span class="mono up">+540%</span></td>
+              <td><span class="age">9 m</span></td>
+              <td><span class="badge b-r">Rug-Risiko</span></td>
+              <td><span class="badge" style="background:rgba(255,255,255,.05);color:var(--mu2)">—</span></td>
+            </tr>
+            <tr>
+              <td><div class="tok"><div class="av" style="background:linear-gradient(135deg,#c497ff,#6b4dff)">V</div>
+                <div><div class="tk">$VIBE</div><div class="tn">Vibe Check</div></div></div></td>
+              <td><div class="heat"><div class="bar"><i style="width:58%;background:var(--blu)"></i></div><span class="mono" style="color:var(--blu)">58</span></div></td>
+              <td><span class="mono">15 → 52</span></td>
+              <td><span class="mono">$2.4M</span></td>
+              <td><span class="mono dn">−8%</span></td>
+              <td><span class="age">1 d</span></td>
+              <td><span class="badge b-g">Sauber</span></td>
+              <td><span class="badge b-b">5 Wallets</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+ </div>
+</div>
+
+<!-- ============ STATS ============ -->
+<section style="padding-top:88px">
+  <div class="wrap">
+    <div class="stats">
+      <div class="stat"><b style="color:var(--grn)">5.000+</b><span>neue Token pro Tag am Markt</span></div>
+      <div class="stat"><b>8</b><span>Tabs, die du heute offen hast</span></div>
+      <div class="stat"><b style="color:var(--red)">2,8 Mrd.</b><span>USD Rug-Pull-Schaden 2025</span></div>
+      <div class="stat"><b style="color:var(--blu)">15 s</b><span>Aktualisierung im Radar</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PROBLEM ============ -->
+<section style="padding-top:40px">
+  <div class="wrap prob">
+    <div>
+      <div class="eyebrow">Das Problem</div>
+      <h2 style="font-size:clamp(26px,3.6vw,38px)">Du bist immer der Letzte, der es erfährt.</h2>
+      <p style="color:var(--mu);font-size:16px;line-height:1.7;margin-bottom:28px">
+        Bis der Token in deinem Terminal auftaucht, sind die ersten 300 % weg. Nicht weil du zu langsam
+        klickst — sondern weil du an der falschen Stelle guckst.
+      </p>
+      <div class="tabs-mess">
+        <span class="tabx"><s></s>Axiom</span><span class="tabx"><s></s>DexScreener</span>
+        <span class="tabx"><s></s>RugCheck</span><span class="tabx"><s></s>X / Twitter</span>
+        <span class="tabx"><s></s>TG Gruppe #1</span><span class="tabx"><s></s>TG Gruppe #2</span>
+        <span class="tabx"><s></s>Solscan</span><span class="tabx"><s></s>Bubblemaps</span>
+      </div>
+      <div class="arrow-down">↓</div>
+      <div class="one-tab">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3.5 3.5L13 5"/></svg>
+        SONAR — ein Tab
+      </div>
+    </div>
+    <div class="prob-list">
+      <div class="pl"><div class="pl-n">01</div><div>
+        <h4>Charts zeigen die Vergangenheit</h4>
+        <p>Ein Kerzenchart sagt dir, was schon passiert ist. Das Gespräch auf X passiert vorher — dort entsteht die Bewegung.</p></div></div>
+      <div class="pl"><div class="pl-n">02</div><div>
+        <h4>Kein Tool erklärt das „Warum"</h4>
+        <p>Terminals zeigen dir grüne Zahlen. Keines sagt dir, ob dahinter ein echtes Narrativ steckt oder ein Bot-Netzwerk mit Fake-Volumen.</p></div></div>
+      <div class="pl"><div class="pl-n">03</div><div>
+        <h4>Risiko-Prüfung kostet dich die Einstiegschance</h4>
+        <p>Bis du Contract, Holder und Dev-Historie manuell geprüft hast, ist der Moment vorbei. Wir prüfen in dem Moment, in dem das Signal entsteht.</p></div></div>
+      <div class="pl"><div class="pl-n">04</div><div>
+        <h4>Mentions ≠ Signal</h4>
+        <p>500 Bot-Replies sind wertlos. Fünf Accounts mit nachweislicher Trefferquote sind Gold. Wir gewichten nach Reputation, nicht nach Lautstärke.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FEATURES ============ -->
+<section id="features">
+  <div class="wrap">
+    <div class="sec-h">
+      <div class="eyebrow">Was drin steckt</div>
+      <h2>Alles, was du vor dem Klick wissen musst.</h2>
+      <p>Sechs Bausteine, ein Screen. Gebaut für Leute, die auf Solana schnell entscheiden müssen.</p>
+    </div>
+
+    <!-- F1 -->
+    <div class="feat">
+      <div class="feat-txt">
+        <div class="eyebrow">01 — Trend Radar</div>
+        <h3>Narrative, nicht nur Ticker.</h3>
+        <p>Wir clustern Themen, nicht Symbole. Wenn plötzlich 40 relevante Accounts über dasselbe Meme reden, siehst du das Cluster — oft Stunden bevor der passende Token startet.</p>
+        <div class="ticks">
+          <div class="tick"><svg viewBox="0 0 16 16" fill="none" stroke="#14f195" stroke-width="2"><path d="M3 8.5l3.5 3.5L13 5"/></svg><span><b>Beschleunigung statt Volumen</b> — 5 → 40 Mentions in 20 Min. schlägt konstante 500.</span></div>
+          <div class="tick"><svg viewBox="0 0 16 16" fill="none" stroke="#14f195" stroke-width="2"><path d="M3 8.5l3.5 3.5L13 5"/></svg><span><b>Reputationsgewichtet</b> — kuratierte Liste von 600+ Accounts, bewertet nach echter Trefferquote.</span></div>
+          <div class="tick"><svg viewBox="0 0 16 16" fill="none" stroke="#14f195" stroke-width="2"><path d="M3 8.5l3.5 3.5L13 5"/></svg><span><b>Zeitstempel auf jedem Signal</b> — „erkannt vor 41 Min. bei $180K MCap". Nachprüfbar.</span></div>
+        </div>
+      </div>
+      <div class="frame">
+        <div class="frame-bar"><div class="tl"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div><div class="url">Narrativ-Cluster</div></div>
+        <div style="padding:20px;background:var(--bg2)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <div><div style="font-size:15px;font-weight:650">🐱 Cluster: „Cat Summer"</div>
+              <div style="font-size:11.5px;color:var(--mu2);margin-top:3px">Erkannt 08:41 · 4 Token zugeordnet</div></div>
+            <span class="badge b-g">Heat 94</span>
+          </div>
+          <svg viewBox="0 0 420 110" style="width:100%;height:110px;margin-bottom:16px">
+            <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#14f195" stop-opacity=".35"/><stop offset="1" stop-color="#14f195" stop-opacity="0"/></linearGradient></defs>
+            <path d="M0 98 L60 95 L110 92 L160 86 L200 74 L240 58 L280 36 L330 20 L380 10 L420 6"
+              fill="none" stroke="#14f195" stroke-width="2"/>
+            <path d="M0 98 L60 95 L110 92 L160 86 L200 74 L240 58 L280 36 L330 20 L380 10 L420 6 L420 110 L0 110Z" fill="url(#g1)"/>
+            <line x1="200" y1="0" x2="200" y2="110" stroke="#14f195" stroke-width="1" stroke-dasharray="3 3" opacity=".45"/>
+            <circle cx="200" cy="74" r="4" fill="#14f195"/>
+            <text x="208" y="24" fill="#8a8d9c" font-size="10" font-family="monospace">SONAR-Signal 08:41</text>
+          </svg>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div class="wl"><div class="wdot" style="background:#14f195">1</div>
+              <div style="flex:1"><b style="font-size:12.5px">@catcallsonly</b> <span style="color:var(--mu2)">· Trefferquote 34 %</span></div>
+              <span class="mono" style="color:var(--mu2)">08:41</span></div>
+            <div class="wl"><div class="wdot" style="background:#3b9dff">2</div>
+              <div style="flex:1"><b style="font-size:12.5px">@solwhale_eth</b> <span style="color:var(--mu2)">· Trefferquote 28 %</span></div>
+              <span class="mono" style="color:var(--mu2)">08:44</span></div>
+            <div class="wl"><div class="wdot" style="background:#9945ff">3</div>
+              <div style="flex:1"><b style="font-size:12.5px">@degen_nocap</b> <span style="color:var(--mu2)">· Trefferquote 22 %</span></div>
+              <span class="mono" style="color:var(--mu2)">08:52</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- F2 -->
+    <div class="feat rev">
+      <div class="frame">
+        <div class="frame-bar"><div class="tl"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div><div class="url">app.sonar.fun/token/NYAN</div></div>
+        <div style="padding:18px;background:var(--bg2)">
+          <div class="score-ring">
+            <div class="ring">
+              <svg viewBox="0 0 70 70"><circle cx="35" cy="35" r="30" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="6"/>
+              <circle cx="35" cy="35" r="30" fill="none" stroke="#14f195" stroke-width="6" stroke-linecap="round"
+                stroke-dasharray="188" stroke-dashoffset="30" transform="rotate(-90 35 35)"/></svg>
+              <b style="color:var(--grn)">84</b>
+            </div>
+            <div>
+              <div style="font-size:15px;font-weight:650;margin-bottom:4px">Vertrauens-Score: 84 / 100</div>
+              <div style="font-size:12.5px;color:var(--mu);line-height:1.55">Mint & Freeze Authority entzogen · LP 100 % verbrannt · Top-10 halten 14 % · Dev ohne Rug-Historie</div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div class="pan" style="padding:13px">
+              <div class="pan-h">On-Chain</div>
+              <div class="kv"><span>MCap</span><b>$412.400</b></div>
+              <div class="kv"><span>Liquidität</span><b>$68.100</b></div>
+              <div class="kv"><span>Vol 1h</span><b>$291.000</b></div>
+              <div class="kv"><span>Holder</span><b>1.284</b></div>
+            </div>
+            <div class="pan" style="padding:13px">
+              <div class="pan-h">Risiko-Checks</div>
+              <div class="kv"><span>Mint Authority</span><b class="up">entzogen ✓</b></div>
+              <div class="kv"><span>LP gelockt</span><b class="up">verbrannt ✓</b></div>
+              <div class="kv"><span>Bundler erkannt</span><b class="up">nein ✓</b></div>
+              <div class="kv"><span>Vol/Holder-Ratio</span><b style="color:var(--yel)">erhöht ⚠</b></div>
+            </div>
+          </div>
+          <div class="ai-box">
+            <div class="ai-h">✦ SONAR erklärt</div>
+            <p>Der Anstieg geht auf einen viralen Post von <b style="color:#c497ff">@catcallsonly</b> vor 41 Min. zurück, dem drei weitere Accounts mit guter Historie gefolgt sind. Contract ist sauber, LP verbrannt. Auffällig: Volumen wächst schneller als die Holder-Zahl — ein Teil des Umsatzes dürfte Wash-Trading sein.</p>
+          </div>
+        </div>
+      </div>
+      <div class="feat-txt">
+        <div class="eyebrow">02 — Token-Steckbrief</div>
+        <h3>Ein Screen, der acht Tabs ersetzt.</h3>
+        <p>Social, On-Chain, Holder-Verteilung, Risiko-Checks und Smart Money — nebeneinander statt hintereinander. Plus zwei Sätze im Klartext, warum sich gerade etwas bewegt.</p>
+        <div class="ticks">
+          <div class="tick"><svg viewBox="0 0 16 16" fill="none" stroke="#14f195" stroke-width="2"><path d="M3 8.5l3.5 3.5L13 5"/></svg><span>Kein Blackbox-Score — jede Zahl lässt sich aufklappen und nachvollziehen.</span></div>
+          <div class="tick"><svg viewBox="0 0 16 16" fill="none" stroke="#14f195" stroke-width="2"><path d="M3 8.5l3.5 3.5L13 5"/></svg><span>Erkennt Fake-Volumen über Volumen-Holder-Mismatch und Bundler-Muster.</span></div>
+          <div class="tick"><svg viewBox="0 0 16 16" fill="none" stroke="#14f195" stroke-width="2"><path d="M3 8.5l3.5 3.5L13 5"/></svg><span>Dev-Historie: hat dieser Deployer schon 12 Token gerugged? Steht da.</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- F3 -->
+    <div class="feat">
+      <div class="feat-txt">
+        <div class="eyebrow">03 — Telegram-Bot</div>
+        <h3>Signale da, wo du sowieso bist.</h3>
+        <p>Kein zusätzliches Fenster. Alerts, Watchlist und vollständige Steckbriefe direkt im Chat — und per Inline-Query in jeder Gruppe abrufbar.</p>
+        <div class="ticks">
+          <div class="tick"><svg viewBox="0 0 16 16" fill="none" stroke="#14f195" stroke-width="2"><path d="M3 8.5l3.5 3.5L13 5"/></svg><span>Push bei neuem Narrativ, Smart-Money-Cluster oder Risiko-Änderung.</span></div>
+          <div class="tick"><svg viewBox="0 0 16 16" fill="none" stroke="#14f195" stroke-width="2"><path d="M3 8.5l3.5 3.5L13 5"/></svg><span><code style="font-family:var(--mono);font-size:13px;color:var(--grn)">@sonarbot NYAN</code> in jeder Gruppe — sofort die volle Karte.</span></div>
+          <div class="tick"><svg viewBox="0 0 16 16" fill="none" stroke="#14f195" stroke-width="2"><path d="M3 8.5l3.5 3.5L13 5"/></svg><span>Ohne Anmeldung nutzbar. Einfach Bot starten.</span></div>
+        </div>
+      </div>
+      <div class="tg">
+        <div class="tg-h">
+          <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#14f195,#3b9dff);display:grid;place-items:center;font-size:13px;font-weight:800;color:#04120c">S</div>
+          <div><div style="font-size:14px;font-weight:600">SONAR Bot</div><div style="font-size:11px;color:var(--grn)">online</div></div>
+        </div>
+        <div class="tg-b">
+          <div class="msg">
+            🔔 <b>Neues Narrativ erkannt</b><br><br>
+            Cluster „Cat Summer" · Heat <b>94</b><br>
+            Top-Token: <b>$NYAN</b> — $412K MCap<br>
+            Vertrauens-Score: <b>84/100</b> ✓<br>
+            7 Smart-Money-Wallets eingestiegen<br><br>
+            <span style="color:var(--mu2)">Erstmals erkannt vor 41 Min. bei $180K</span>
+            <div class="t">08:41</div>
+          </div>
+          <div class="msg me">@sonarbot NYAN<div class="t" style="color:rgba(255,255,255,.4)">09:02</div></div>
+          <div class="msg">
+            <b>$NYAN</b> · Nyan Renaissance<br>
+            💰 $412K · +284 % (15m)<br>
+            💧 LP $68K · verbrannt ✓<br>
+            👥 1.284 Holder · Top10 14 %<br>
+            🛡 Score 84 — Mint entzogen ✓<br>
+            ⚠️ Vol/Holder erhöht — evtl. Wash-Trading
+            <div class="t">09:02</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- F4 -->
+    <div class="feat rev">
+      <div class="callcard">
+        <div style="font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--grn);font-weight:700">✦ Verifizierter Call</div>
+        <div style="font-size:26px;font-weight:750;margin-top:14px;letter-spacing:-.02em">$NYAN</div>
+        <div class="pnl">+5.750 %</div>
+        <div class="rng">$41K &nbsp;→&nbsp; $2,4M &nbsp;·&nbsp; 6 h 12 m</div>
+        <div class="who">
+          <div style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#9945ff,#14f195)"></div>
+          <b style="color:var(--tx)">@degen_nocap</b> · Rang #3 diese Woche
+        </div>
+        <div style="font-size:10.5px;color:var(--mu2);margin-top:14px;font-family:var(--mono)">
+          Zeitstempel on-chain verifiziert · sonar.fun</div>
+      </div>
+      <div class="feat-txt">
+        <div class="eyebrow">04 — Verifizierte Calls</div>
+        <h3>Beweisbare Trefferquote statt Screenshot-Bullshit.</h3>
+        <p>Jeder Call wird mit Zeitstempel und Marktkapitalisierung festgehalten — nachträglich nicht änderbar. Daraus entsteht ein öffentliches Leaderboard, auf dem Ruf tatsächlich etwas wert ist.</p>
+        <div class="ticks">
+          <div class="tick"><svg viewBox="0 0 16 16" fill="none" stroke="#14f195" stroke-width="2"><path d="M3 8.5l3.5 3.5L13 5"/></svg><span>Manipulationssicher: Einstiegszeitpunkt und MCap sind fixiert.</span></div>
+          <div class="tick"><svg viewBox="0 0 16 16" fill="none" stroke="#14f195" stroke-width="2"><path d="M3 8.5l3.5 3.5L13 5"/></svg><span>Verluste zählen mit. Ein Leaderboard, das nur Gewinne zeigt, ist wertlos.</span></div>
+          <div class="tick"><svg viewBox="0 0 16 16" fill="none" stroke="#14f195" stroke-width="2"><path d="M3 8.5l3.5 3.5L13 5"/></svg><span>Teilbare Karte für X — ein Klick, fertiges Bild.</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- remaining as cards -->
+    <div class="cards">
+      <div class="card">
+        <div class="card-i"><svg width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="#3b9dff" stroke-width="1.6"><circle cx="6" cy="5.5" r="2.4"/><path d="M1.8 13.5c0-2.4 1.9-3.9 4.2-3.9s4.2 1.5 4.2 3.9"/><path d="M11.5 6.5h3M13 5v3"/></svg></div>
+        <h4>Smart-Money-Cluster</h4>
+        <p>Wallets mit nachweislich hoher Trefferquote werden automatisch erkannt und geranked. Alert, sobald mehrere <em>unabhängig voneinander</em> denselben Token kaufen — das Cluster ist das Signal, nicht die Einzel-Wallet.</p>
+      </div>
+      <div class="card">
+        <div class="card-i"><svg width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="#ff4d6a" stroke-width="1.6"><path d="M8 1.8l5.5 2.4v4c0 3.2-2.3 5.6-5.5 6.4-3.2-.8-5.5-3.2-5.5-6.4v-4z"/><path d="M8 5.5v3.5M8 11h.01"/></svg></div>
+        <h4>Risiko-Ampel</h4>
+        <p>Contract-Checks, Holder-Konzentration, Dev-Historie, Liquidity-Lock, Bundler- und Insider-Erkennung — aus mehreren Quellen zu einem Score verdichtet. Immer mit ausklappbarer Begründung.</p>
+      </div>
+      <div class="card">
+        <div class="card-i"><svg width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="#ffc531" stroke-width="1.6"><path d="M8 2v1M3.5 6.5a4.5 4.5 0 019 0c0 3 1.5 4 1.5 4H2s1.5-1 1.5-4z"/><path d="M6.5 13.5a1.7 1.7 0 003 0"/></svg></div>
+        <h4>Alerts nach deinen Regeln</h4>
+        <p>„Sag mir Bescheid, wenn ein Token unter $500K MCap Heat &gt; 80 und Score &gt; 70 erreicht." Kombinierbare Bedingungen, Push in Telegram oder Browser.</p>
+      </div>
+      <div class="card">
+        <div class="card-i"><svg width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="#14f195" stroke-width="1.6"><path d="M2 12l3.5-4.5 3 3L14 4"/><path d="M10.5 4H14v3.5"/></svg></div>
+        <h4>Backtest-Ansicht</h4>
+        <p>Jedes Signal der letzten 30 Tage mit dem tatsächlichen Kursverlauf danach. Du kannst selbst nachrechnen, ob der Radar funktioniert — statt uns glauben zu müssen.</p>
+      </div>
+      <div class="card">
+        <div class="card-i"><svg width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="#c497ff" stroke-width="1.6"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="M2 6.5h12M5.5 10h5"/></svg></div>
+        <h4>Ein-Klick zum Terminal</h4>
+        <p>Wir führen keine Trades aus. Wenn du handeln willst, öffnet ein Klick den Token direkt in Axiom, Photon oder GMGN — mit deinen eigenen Einstellungen.</p>
+      </div>
+      <div class="card">
+        <div class="card-i"><svg width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="#8a8d9c" stroke-width="1.6"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.5v3.5l2.3 1.4"/></svg></div>
+        <h4>Täglicher Recap</h4>
+        <p>Jeden Morgen: was der Radar gestern erkannt hat, was daraus wurde — und was danebenlag. Öffentlich einsehbar, auch die Fehlschläge.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ HOW ============ -->
+<section style="background:linear-gradient(180deg,transparent,rgba(255,255,255,.014),transparent)">
+  <div class="wrap">
+    <div class="sec-h">
+      <div class="eyebrow">So funktioniert's</div>
+      <h2>In drei Minuten startklar.</h2>
+    </div>
+    <div class="steps">
+      <div class="step"><h4>Anmelden</h4><p>E-Mail oder Telegram — keine Wallet, keine Seed Phrase, keine Verbindung zu deinem Geld. Wir brauchen keinen Zugriff auf irgendetwas.</p></div>
+      <div class="step"><h4>Radar konfigurieren</h4><p>Marktkapitalisierung, Alter, Mindest-Score, Risikoschwelle. Sag uns, was dich interessiert — den Rest blenden wir aus.</p></div>
+      <div class="step"><h4>Signale bekommen</h4><p>Web-Dashboard oder Telegram-Push. Du entscheidest, ob und wo du handelst. Wir liefern nur die Information.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PREISE ============ -->
+<section id="preise">
+  <div class="wrap">
+    <div class="sec-h">
+      <div class="eyebrow">Preise</div>
+      <h2>Kostenlos ist wirklich kostenlos.</h2>
+      <p>Der Free-Plan ist kein Köder. Er ist voll nutzbar — Pro gibt es für Leute, die Sekunden brauchen.</p>
+    </div>
+    <div class="prices">
+      <div class="price">
+        <h4>FREE</h4>
+        <div class="amt">0 €<small> / Monat</small></div>
+        <p>Für alle, die einsteigen</p>
+        <ul>
+          <li><svg viewBox="0 0 16 16" fill="none" stroke="#14f195" stroke-width="2"><path d="M3 8.5l3.5 3.5L13 5"/></svg>Trend Radar (3 Min. Verzögerung)</li>
+          <li><svg viewBox="0 0 16 16" fill="none" stroke="#14f195" stroke-width="2"><path d="M3 8.5l3.5 3.5L13 5"/></svg>Alle Token-Steckbriefe</li>
+          <li><svg viewBox="0 0 16 16" fill="none" stroke="#14f195" stroke-width="2"><path d="M3 8.5l3.5 3.5L13 5"/></svg>Risiko-Ampel unbegrenzt</li>
+          <li><svg viewBox="0 0 16 16" fill="none" stroke="#14f195" stroke-width="2"><path d="M3 8.5l3.5 3.5L13 5"/></svg>Telegram-Bot &amp; Inline-Abfragen</li>
+          <li><svg viewBox="0 0 16 16" fill="none" stroke="#14f195" stroke-width="2"><path d="M3 8.5l3.5 3.5L13 5"/></svg>5 Alerts · Watchlist bis 20 Token</li>
+        </ul>
+        <button class="btn btn-g btn-lg" style="width:100%" onclick="openModal()">Kostenlos starten</button>
+      </div>
+      <div class="price hi">
+        <div class="price-tag">FÜR AKTIVE TRADER</div>
+        <h4>PRO</h4>
+        <div class="amt">29 €<small> / Monat</small></div>
+        <p>Alles aus Free, plus:</p>
+        <ul>
+          <li><svg viewBox="0 0 16 16" fill="none" stroke="#14f195" stroke-width="2"><path d="M3 8.5l3.5 3.5L13 5"/></svg><b>Echtzeit</b> statt 3 Min. Verzögerung</li>
+          <li><svg viewBox="0 0 16 16" fill="none" stroke="#14f195" stroke-width="2"><path d="M3 8.5l3.5 3.5L13 5"/></svg>Unbegrenzte Alerts &amp; Watchlist</li>
+          <li><svg viewBox="0 0 16 16" fill="none" stroke="#14f195" stroke-width="2"><path d="M3 8.5l3.5 3.5L13 5"/></svg>Smart-Money-Cluster-Alerts</li>
+          <li><svg viewBox="0 0 16 16" fill="none" stroke="#14f195" stroke-width="2"><path d="M3 8.5l3.5 3.5L13 5"/></svg>Backtest-Zugriff &amp; Signal-Historie</li>
+          <li><svg viewBox="0 0 16 16" fill="none" stroke="#14f195" stroke-width="2"><path d="M3 8.5l3.5 3.5L13 5"/></svg>API-Zugang für eigene Bots</li>
+        </ul>
+        <button class="btn btn-p btn-lg" style="width:100%" onclick="openModal()">Pro sichern</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FAQ ============ -->
+<section id="faq">
+  <div class="wrap">
+    <div class="sec-h"><div class="eyebrow">FAQ</div><h2>Die ehrlichen Antworten.</h2></div>
+    <div class="faq">
+      <details open><summary>Macht mich das reich?</summary>
+        <p>Nein. Die überwältigende Mehrheit der Memecoin-Trader verliert Geld — daran ändert kein Tool etwas. SONAR hilft dir, Rugs früher zu erkennen und Bewegungen früher zu sehen. Das ist ein echter Vorteil, aber keine Garantie und keine Empfehlung. Handle nur mit Geld, dessen Totalverlust du verkraftest.</p></details>
+      <details><summary>Führt SONAR Trades aus?</summary>
+        <p>Nein, bewusst nicht. Wir verbinden uns nicht mit deiner Wallet, verwahren nichts und führen nichts aus. Das schützt dich (kein Zugriff auf dein Geld) und uns (keine Finanzdienstleistung im Sinne des KWG). Wenn du handeln willst, verlinken wir dich zu dem Terminal deiner Wahl.</p></details>
+      <details><summary>Konkurriert ihr mit Axiom, GMGN und Photon?</summary>
+        <p>Nein — wir sind die Schicht davor. Die genannten Terminals sind auf Ausführungsgeschwindigkeit optimiert und darin sehr gut. SONAR beantwortet die Frage <em>davor</em>: worauf soll ich überhaupt schauen und ist es sauber? Viele Nutzer haben beides offen.</p></details>
+      <details><summary>Woher kommen die Daten?</summary>
+        <p>On-Chain-Daten über Solana-RPC und Indexer, Preis- und Paar-Daten von mehreren DEX-Aggregatoren, Risiko-Checks aus mehreren unabhängigen Scannern. Social-Signale aus einer kuratierten Liste von über 600 Accounts statt aus dem ungefilterten Feed — deshalb sehen wir Signal statt Bot-Rauschen.</p></details>
+      <details><summary>Woher weiß ich, dass der Radar funktioniert?</summary>
+        <p>Weil du es nachprüfen kannst. Jedes Signal hat einen Zeitstempel und die Marktkapitalisierung des Erkennungsmoments. Die Backtest-Ansicht zeigt alle Signale der letzten 30 Tage mit dem tatsächlichen Verlauf danach — inklusive der Fehlschläge. Wir behaupten keine Trefferquote, wir zeigen sie.</p></details>
+      <details><summary>Warum ist der Free-Plan so großzügig?</summary>
+        <p>Weil Reichweite in dieser Phase mehr wert ist als Umsatz. Wir verdienen zusätzlich über Provisionen, wenn du über uns ein Terminal öffnest und dort handelst — das kostet dich nichts extra und ist auf jeder Verlinkung gekennzeichnet.</p></details>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CTA ============ -->
+<section style="padding-top:20px">
+  <div class="wrap">
+    <div class="cta-box">
+      <div class="pill"><span class="dot"></span> Early Access · Start Q4 2026</div>
+      <h2 style="max-width:600px;margin:20px auto 14px">Der nächste Run wartet nicht auf dich.</h2>
+      <p style="color:var(--mu);font-size:16.5px;max-width:520px;margin:0 auto">
+        Sichere dir jetzt den Zugang. Die ersten 500 Anmeldungen bekommen Pro sechs Monate kostenlos.</p>
+      <form class="form" onsubmit="submitForm(event)">
+        <input type="email" placeholder="deine@email.de" required>
+        <button class="btn btn-p" type="submit">Anmelden</button>
+      </form>
+      <p class="microcopy">Kein Spam. Nur eine Mail, wenn es losgeht.</p>
+    </div>
+  </div>
+</section>
+</main>
+
+<!-- ============ FOOTER ============ -->
+<footer>
+  <div class="wrap">
+    <div class="f-top">
+      <div style="max-width:290px">
+        <div class="logo" style="margin-bottom:12px">
+          <svg class="logo-mark" viewBox="0 0 26 26" fill="none">
+            <circle cx="13" cy="13" r="11.5" stroke="#14f195" stroke-opacity=".28"/>
+            <circle cx="13" cy="13" r="7" stroke="#14f195" stroke-opacity=".5"/>
+            <circle cx="13" cy="13" r="2.6" fill="#14f195"/>
+            <path d="M13 13L21.5 6" stroke="#14f195" stroke-width="1.3" stroke-linecap="round"/>
+          </svg>SONAR
+        </div>
+        <p style="font-size:13.5px;color:var(--mu);line-height:1.6">Die Signal-Schicht für Solana-Memecoins. Daten, keine Empfehlungen.</p>
+      </div>
+      <div class="f-col"><h5>Produkt</h5><a href="#produkt">Trend Radar</a><a href="#features">Risiko-Ampel</a><a href="#features">Telegram-Bot</a><a href="#preise">Preise</a></div>
+      <div class="f-col"><h5>Ressourcen</h5><a href="#">Dokumentation</a><a href="#">API</a><a href="#">Backtest-Archiv</a><a href="#">Status</a></div>
+      <div class="f-col"><h5>Rechtliches</h5><a href="#">Impressum</a><a href="#">Datenschutz</a><a href="#">AGB</a><a href="#">Risikohinweis</a></div>
+    </div>
+    <div class="disc">
+      <strong style="color:var(--mu)">Risikohinweis:</strong> SONAR ist ein reines Informations- und Analysewerkzeug.
+      Wir bieten keine Anlageberatung, keine Anlagevermittlung und keine Vermögensverwaltung an, geben keine Kauf- oder
+      Verkaufsempfehlungen ab und führen keine Transaktionen aus. Der Handel mit Kryptowährungen — insbesondere mit
+      Memecoins — ist hochspekulativ. Der vollständige Verlust des eingesetzten Kapitals ist der statistische Regelfall.
+      Alle dargestellten Daten können fehlerhaft, verzögert oder unvollständig sein. Entscheidungen triffst allein du.
+      Verlinkungen zu Handelsplattformen können Provisionen enthalten (Werbung).
+      <div style="margin-top:16px;color:var(--mu2)">© 2026 SONAR · Alle Marken gehören ihren jeweiligen Inhabern. Beispieldaten dienen nur der Illustration.</div>
+    </div>
+  </div>
+</footer>
+
+<!-- ============ MODAL ============ -->
+<div class="ov" id="ov" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div style="width:52px;height:52px;border-radius:14px;background:rgba(20,241,149,.12);display:grid;place-items:center;margin:0 auto 18px">
+      <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+        <circle cx="13" cy="13" r="11" stroke="#14f195" stroke-opacity=".4"/><circle cx="13" cy="13" r="6" stroke="#14f195" stroke-opacity=".7"/><circle cx="13" cy="13" r="2.4" fill="#14f195"/></svg>
+    </div>
+    <h3 id="mt">Du bist auf der Liste</h3>
+    <p id="mp">SONAR ist noch im Aufbau. Wir melden uns, sobald der Zugang offen ist — die ersten 500 bekommen Pro sechs Monate gratis.</p>
+    <button class="btn btn-g" style="width:100%;margin-bottom:9px" onclick="closeModal();openDemo()">Solange Produkt ansehen</button>
+    <button class="btn btn-p" style="width:100%" onclick="closeModal()">Schließen</button>
+  </div>
+</div>
+
+<!-- ============ DEMO OVERLAY ============ -->
+<div class="demo-ov" id="demo">
+  <div class="demo-inner">
+    <div class="demo-head">
+      <div><h3>Produkt-Vorschau</h3><p>Interaktives Mockup — so soll die App aussehen. Beispieldaten.</p></div>
+      <button class="btn btn-g" onclick="closeDemo()">✕ Schließen</button>
+    </div>
+    <div class="dtabs">
+      <button class="dtab on" onclick="dt(this,0)">Trend Radar</button>
+      <button class="dtab" onclick="dt(this,1)">Token-Detail</button>
+      <button class="dtab" onclick="dt(this,2)">Smart Money</button>
+      <button class="dtab" onclick="dt(this,3)">Leaderboard</button>
+    </div>
+
+    <!-- pane 0 -->
+    <div class="dpane on">
+      <div class="frame"><div class="frame-bar"><div class="tl"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div><div class="url">app.sonar.fun/radar</div></div>
+        <div style="padding:18px 20px;background:var(--bg2)">
+          <div class="bh"><div><h3>Trend Radar</h3><div class="sublabel">Sortiert nach Mention-Beschleunigung</div></div>
+            <div class="chips"><span class="chip on">15 Min</span><span class="chip">1 Std</span><span class="chip">Nur Score &gt; 70</span></div></div>
+          <table><thead><tr><th>Token</th><th>Heat</th><th>Mentions</th><th>MCap</th><th>15m</th><th>Alter</th><th>Risiko</th></tr></thead>
+          <tbody>
+            <tr><td><div class="tok"><div class="av" style="background:linear-gradient(135deg,#14f195,#00b4ff)">N</div><div><div class="tk">$NYAN</div><div class="tn">Nyan Renaissance</div></div></div></td>
+              <td><div class="heat"><div class="bar"><i style="width:94%;background:var(--grn)"></i></div><span class="mono up">94</span></div></td>
+              <td><span class="mono">12 → 187</span></td><td><span class="mono">$412K</span></td><td><span class="mono up">+284%</span></td><td><span class="age">41 m</span></td><td><span class="badge b-g">84 · Sauber</span></td></tr>
+            <tr><td><div class="tok"><div class="av" style="background:linear-gradient(135deg,#ffc531,#ff7a3d)">G</div><div><div class="tk">$GIGA</div><div class="tn">Gigabrain</div></div></div></td>
+              <td><div class="heat"><div class="bar"><i style="width:81%;background:var(--grn)"></i></div><span class="mono up">81</span></div></td>
+              <td><span class="mono">34 → 141</span></td><td><span class="mono">$1.8M</span></td><td><span class="mono up">+62%</span></td><td><span class="age">3 h</span></td><td><span class="badge b-g">79 · Sauber</span></td></tr>
+            <tr><td><div class="tok"><div class="av" style="background:linear-gradient(135deg,#9945ff,#ff4d9d)">M</div><div><div class="tk">$MOOD</div><div class="tn">Mood Cycle</div></div></div></td>
+              <td><div class="heat"><div class="bar"><i style="width:73%;background:var(--yel)"></i></div><span class="mono" style="color:var(--yel)">73</span></div></td>
+              <td><span class="mono">8 → 96</span></td><td><span class="mono">$204K</span></td><td><span class="mono up">+119%</span></td><td><span class="age">18 m</span></td><td><span class="badge b-y">61 · Prüfen</span></td></tr>
+            <tr><td><div class="tok"><div class="av" style="background:linear-gradient(135deg,#3b9dff,#14f195)">P</div><div><div class="tk">$PLNK</div><div class="tn">Plankton</div></div></div></td>
+              <td><div class="heat"><div class="bar"><i style="width:66%;background:var(--yel)"></i></div><span class="mono" style="color:var(--yel)">66</span></div></td>
+              <td><span class="mono">21 → 78</span></td><td><span class="mono">$860K</span></td><td><span class="mono up">+31%</span></td><td><span class="age">6 h</span></td><td><span class="badge b-g">88 · Sauber</span></td></tr>
+          </tbody></table>
+        </div></div>
+    </div>
+
+    <!-- pane 1 -->
+    <div class="dpane">
+      <div class="frame"><div class="frame-bar"><div class="tl"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div><div class="url">app.sonar.fun/token/NYAN</div></div>
+      <div style="padding:18px;background:var(--bg2)">
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-wrap:wrap">
+          <div class="av" style="width:44px;height:44px;flex:0 0 44px;border-radius:12px;font-size:18px;background:linear-gradient(135deg,#14f195,#00b4ff)">N</div>
+          <div style="flex:1"><div style="font-size:19px;font-weight:700;letter-spacing:-.02em">$NYAN <span style="font-size:13px;color:var(--mu2);font-weight:400">Nyan Renaissance</span></div>
+            <div class="mono" style="font-size:11.5px;color:var(--mu2);margin-top:3px">7xKp…9dQm · Solana · Raydium</div></div>
+          <div style="text-align:right"><div class="mono" style="font-size:20px;font-weight:700">$0.000412</div><div class="mono up" style="font-size:13px">+284,3 %</div></div>
+          <button class="btn btn-p">In Axiom öffnen ↗</button>
+        </div>
+        <div class="tdetail">
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div class="pan">
+              <div class="pan-h">Mentions vs. Preis · 6 Std</div>
+              <svg viewBox="0 0 460 130" style="width:100%;height:130px">
+                <defs><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#14f195" stop-opacity=".28"/><stop offset="1" stop-color="#14f195" stop-opacity="0"/></linearGradient></defs>
+                <g stroke="rgba(255,255,255,.05)"><line x1="0" y1="32" x2="460" y2="32"/><line x1="0" y1="64" x2="460" y2="64"/><line x1="0" y1="96" x2="460" y2="96"/></g>
+                <path d="M0 116 L70 112 L120 108 L170 96 L210 60 L250 44 L300 30 L360 22 L420 14 L460 10" fill="none" stroke="#14f195" stroke-width="2.2"/>
+                <path d="M0 116 L70 112 L120 108 L170 96 L210 60 L250 44 L300 30 L360 22 L420 14 L460 10 L460 130 L0 130Z" fill="url(#g2)"/>
+                <path d="M0 122 L70 120 L120 114 L170 104 L210 86 L250 66 L300 52 L360 40 L420 30 L460 26" fill="none" stroke="#9945ff" stroke-width="1.6" stroke-dasharray="4 3" opacity=".75"/>
+                <line x1="170" y1="0" x2="170" y2="130" stroke="#14f195" stroke-dasharray="3 3" opacity=".4"/>
+                <circle cx="170" cy="96" r="4" fill="#14f195"/><text x="178" y="20" fill="#8a8d9c" font-size="10" font-family="monospace">SONAR-Signal · $180K MCap</text>
+              </svg>
+              <div style="display:flex;gap:18px;font-size:11.5px;color:var(--mu2);margin-top:6px">
+                <span><i style="display:inline-block;width:10px;height:2px;background:#14f195;vertical-align:middle"></i> Preis</span>
+                <span><i style="display:inline-block;width:10px;height:2px;background:#9945ff;vertical-align:middle"></i> Mentions (gewichtet)</span></div>
+            </div>
+            <div class="pan">
+              <div class="pan-h">Holder-Verteilung</div>
+              <div style="display:flex;height:26px;border-radius:7px;overflow:hidden;margin-bottom:11px">
+                <div style="width:14%;background:var(--yel)"></div><div style="width:19%;background:var(--blu)"></div><div style="width:67%;background:rgba(20,241,149,.55)"></div></div>
+              <div style="display:flex;gap:16px;font-size:11.5px;color:var(--mu)">
+                <span>Top 10: <b class="mono" style="color:var(--yel)">14 %</b></span>
+                <span>Top 11–50: <b class="mono" style="color:var(--blu)">19 %</b></span>
+                <span>Rest: <b class="mono up">67 %</b></span></div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div class="pan">
+              <div class="pan-h">Vertrauens-Score</div>
+              <div class="score-ring" style="margin-bottom:6px">
+                <div class="ring"><svg viewBox="0 0 70 70"><circle cx="35" cy="35" r="30" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="6"/>
+                  <circle cx="35" cy="35" r="30" fill="none" stroke="#14f195" stroke-width="6" stroke-linecap="round" stroke-dasharray="188" stroke-dashoffset="30" transform="rotate(-90 35 35)"/></svg><b style="color:var(--grn)">84</b></div>
+                <div style="font-size:12.5px;color:var(--mu);line-height:1.55">Deutlich über dem Median neuer Token (31).</div>
+              </div>
+              <div class="kv"><span>Mint Authority</span><b class="up">entzogen ✓</b></div>
+              <div class="kv"><span>Freeze Authority</span><b class="up">entzogen ✓</b></div>
+              <div class="kv"><span>LP-Status</span><b class="up">verbrannt ✓</b></div>
+              <div class="kv"><span>Dev-Historie</span><b class="up">2 Token, 0 Rugs ✓</b></div>
+              <div class="kv"><span>Bundler-Muster</span><b class="up">nicht erkannt ✓</b></div>
+              <div class="kv"><span>Vol/Holder-Ratio</span><b style="color:var(--yel)">erhöht ⚠</b></div>
+            </div>
+            <div class="pan">
+              <div class="pan-h">Smart Money · 7 Wallets</div>
+              <div class="wl"><div class="wdot" style="background:#14f195">A</div><div style="flex:1"><b class="mono">4kQ…mZ2</b><div style="color:var(--mu2);font-size:11px">Trefferquote 41 % · 30 T</div></div><span class="mono up">$14.2K</span></div>
+              <div class="wl"><div class="wdot" style="background:#3b9dff">B</div><div style="flex:1"><b class="mono">9pL…xR7</b><div style="color:var(--mu2);font-size:11px">Trefferquote 36 % · 30 T</div></div><span class="mono up">$8.9K</span></div>
+              <div class="wl"><div class="wdot" style="background:#9945ff">C</div><div style="flex:1"><b class="mono">2hN…kW4</b><div style="color:var(--mu2);font-size:11px">Trefferquote 29 % · 30 T</div></div><span class="mono up">$6.1K</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="ai-box"><div class="ai-h">✦ SONAR erklärt</div>
+          <p>Auslöser war ein Post von <b style="color:#c497ff">@catcallsonly</b> um 08:41, dem drei weitere Accounts mit überdurchschnittlicher Historie folgten — ein echtes Narrativ-Cluster, kein einzelner Shill. Der Contract ist sauber, die Holder-Verteilung für dieses Alter ungewöhnlich gesund. <b style="color:var(--yel)">Vorsicht:</b> das Volumen wächst deutlich schneller als die Holder-Zahl, ein Teil davon dürfte Wash-Trading sein.</p></div>
+      </div></div>
+    </div>
+
+    <!-- pane 2 -->
+    <div class="dpane">
+      <div class="frame"><div class="frame-bar"><div class="tl"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div><div class="url">app.sonar.fun/smart-money</div></div>
+      <div style="padding:18px 20px;background:var(--bg2)">
+        <div class="bh"><div><h3>Smart Money</h3><div class="sublabel">Wallets nach 30-Tage-Trefferquote · Cluster-Alerts aktiv</div></div>
+          <div class="chips"><span class="chip on">Cluster ≥ 3</span><span class="chip">Alle Käufe</span></div></div>
+        <div style="background:rgba(20,241,149,.06);border:1px solid rgba(20,241,149,.25);border-radius:10px;padding:14px;margin-bottom:16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <span class="badge b-g">CLUSTER-ALERT</span>
+          <span style="font-size:13.5px;flex:1"><b>7 unabhängige Top-Wallets</b> haben in den letzten 22 Min. <b>$NYAN</b> gekauft — zusammen $46,8K.</span>
+          <span class="mono" style="font-size:11.5px;color:var(--mu2)">vor 4 Min.</span>
+        </div>
+        <table><thead><tr><th>Wallet</th><th>Trefferquote 30 T</th><th>P&amp;L 30 T</th><th>Letzter Kauf</th><th>Größe</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td><div class="tok"><div class="wdot" style="background:#14f195">A</div><div><div class="tk mono">4kQ…mZ2</div><div class="tn">„Der Frühe"</div></div></div></td>
+            <td><span class="mono up">41 %</span></td><td><span class="mono up">+$284K</span></td><td><span class="mono">$NYAN</span></td><td><span class="mono">$14.2K</span></td><td><span class="badge b-g">hält</span></td></tr>
+          <tr><td><div class="tok"><div class="wdot" style="background:#3b9dff">B</div><div><div class="tk mono">9pL…xR7</div><div class="tn">„Sniper 9"</div></div></div></td>
+            <td><span class="mono up">36 %</span></td><td><span class="mono up">+$191K</span></td><td><span class="mono">$NYAN</span></td><td><span class="mono">$8.9K</span></td><td><span class="badge b-g">hält</span></td></tr>
+          <tr><td><div class="tok"><div class="wdot" style="background:#9945ff">C</div><div><div class="tk mono">2hN…kW4</div><div class="tn">„Narrativ-Jäger"</div></div></div></td>
+            <td><span class="mono up">29 %</span></td><td><span class="mono up">+$126K</span></td><td><span class="mono">$GIGA</span></td><td><span class="mono">$6.1K</span></td><td><span class="badge b-y">50 % raus</span></td></tr>
+          <tr><td><div class="tok"><div class="wdot" style="background:#ffc531">D</div><div><div class="tk mono">8vR…tB1</div><div class="tn">„Der Geduldige"</div></div></div></td>
+            <td><span class="mono up">27 %</span></td><td><span class="mono up">+$98K</span></td><td><span class="mono">$PLNK</span></td><td><span class="mono">$21.4K</span></td><td><span class="badge b-g">hält</span></td></tr>
+        </tbody></table>
+      </div></div>
+    </div>
+
+    <!-- pane 3 -->
+    <div class="dpane">
+      <div class="frame"><div class="frame-bar"><div class="tl"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div><div class="url">sonar.fun/leaderboard</div></div>
+      <div style="padding:18px 20px;background:var(--bg2)">
+        <div class="bh"><div><h3>Leaderboard · Diese Woche</h3><div class="sublabel">Verifizierte Calls mit Zeitstempel · Verluste zählen mit</div></div>
+          <div class="chips"><span class="chip on">7 Tage</span><span class="chip">30 Tage</span><span class="chip">Allzeit</span></div></div>
+        <table><thead><tr><th>#</th><th>Trader</th><th>Calls</th><th>Trefferquote</th><th>Ø Ergebnis</th><th>Bester Call</th></tr></thead>
+        <tbody>
+          <tr><td><span class="mono" style="color:var(--yel);font-weight:700">1</span></td>
+            <td><div class="tok"><div class="wdot" style="background:linear-gradient(135deg,#ffc531,#ff7a3d)">S</div><div class="tk">@solwhale_eth</div></div></td>
+            <td><span class="mono">31</span></td><td><span class="mono up">42 %</span></td><td><span class="mono up">+218 %</span></td><td><span class="mono up">$GIGA +1.940 %</span></td></tr>
+          <tr><td><span class="mono" style="color:var(--mu);font-weight:700">2</span></td>
+            <td><div class="tok"><div class="wdot" style="background:linear-gradient(135deg,#c8cad4,#8a8d9c)">C</div><div class="tk">@catcallsonly</div></div></td>
+            <td><span class="mono">18</span></td><td><span class="mono up">39 %</span></td><td><span class="mono up">+184 %</span></td><td><span class="mono up">$NYAN +5.750 %</span></td></tr>
+          <tr><td><span class="mono" style="color:#cd7f32;font-weight:700">3</span></td>
+            <td><div class="tok"><div class="wdot" style="background:linear-gradient(135deg,#9945ff,#14f195)">D</div><div class="tk">@degen_nocap</div></div></td>
+            <td><span class="mono">47</span></td><td><span class="mono" style="color:var(--yel)">28 %</span></td><td><span class="mono up">+96 %</span></td><td><span class="mono up">$MOOD +820 %</span></td></tr>
+          <tr><td><span class="mono" style="color:var(--mu2);font-weight:700">4</span></td>
+            <td><div class="tok"><div class="wdot" style="background:linear-gradient(135deg,#3b9dff,#14f195)">L</div><div class="tk">@lowcap_lena</div></div></td>
+            <td><span class="mono">12</span></td><td><span class="mono" style="color:var(--yel)">25 %</span></td><td><span class="mono up">+61 %</span></td><td><span class="mono up">$PLNK +410 %</span></td></tr>
+          <tr style="opacity:.6"><td><span class="mono" style="color:var(--mu2);font-weight:700">5</span></td>
+            <td><div class="tok"><div class="wdot" style="background:linear-gradient(135deg,#ff4d6a,#7a2233)">R</div><div class="tk">@rekt_rudi</div></div></td>
+            <td><span class="mono">88</span></td><td><span class="mono dn">9 %</span></td><td><span class="mono dn">−54 %</span></td><td><span class="mono">$SAFEX −97 %</span></td></tr>
+        </tbody></table>
+        <p style="font-size:11.5px;color:var(--mu2);margin-top:14px;line-height:1.6">
+          Ergebnisse werden ab dem Zeitpunkt des Calls bis zum jeweiligen Höchststand bzw. Verkauf gemessen. Vergangene
+          Ergebnisse sagen nichts über künftige aus — das Leaderboard ist keine Empfehlung, irgendjemandem zu folgen.</p>
+      </div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+function openModal(){document.getElementById('ov').classList.add('on')}
+function closeModal(){document.getElementById('ov').classList.remove('on')}
+function openDemo(){document.getElementById('demo').classList.add('on');document.body.style.overflow='hidden'}
+function closeDemo(){document.getElementById('demo').classList.remove('on');document.body.style.overflow=''}
+function submitForm(e){e.preventDefault();e.target.reset();openModal()}
+function dt(el,i){
+  document.querySelectorAll('.dtab').forEach(t=>t.classList.remove('on'));el.classList.add('on');
+  document.querySelectorAll('.dpane').forEach((p,n)=>p.classList.toggle('on',n===i));
+  document.getElementById('demo').scrollTop=0;
+}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();closeDemo()}});
+// subtle reveal
+const io=new IntersectionObserver(es=>es.forEach(x=>{if(x.isIntersecting){x.target.style.opacity=1;x.target.style.transform='none';io.unobserve(x.target)}}),{threshold:.08});
+document.querySelectorAll('.feat,.card,.step,.price,.stat').forEach(el=>{
+  el.style.opacity=0;el.style.transform='translateY(16px)';el.style.transition='opacity .55s ease,transform .55s ease';io.observe(el)});
+</script>
+</body>
+</html>
