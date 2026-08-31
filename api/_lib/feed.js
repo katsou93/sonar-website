@@ -211,6 +211,46 @@ async function enrich(addresses) {
   }
 }
 
+/**
+ * Was hier NICHTS zu suchen hat.
+ *
+ * Ein Live-Test hat NVDAx, TSLAx, SPYx, cbBTC und mehrere Stablecoins in
+ * den Ergebnissen gezeigt - tokenisierte Aktien und Dollar-Guthaben in
+ * einem Memecoin-Werkzeug. Das ist nicht nur nutzlos, es zerstoert auch
+ * jede Themen-Erkennung: eine Ecke "Aktien" waermt sich immer selbst.
+ *
+ * Statt einer endlosen Namensliste greifen Regeln, die auch morgen noch
+ * stimmen - die Kandidatenmenge wechselt schliesslich staendig.
+ */
+const BLOCKED_SYMBOLS = new Set([
+  "SOL","WSOL","JUP","JLP","RAY","ORCA","PYTH","JTO","W","MNDE","DRIFT","KMNO","CLOUD",
+  "USDC","USDT","USDS","PYUSD","EURC","USDG","USD1","USDH","UXD","FDUSD","JUPUSD",
+  "BTC","WBTC","CBBTC","ETH","WETH","ZEC","BNB","XRP","HYPE",
+  "JITOSOL","MSOL","BSOL","BNSOL","INF","JUPSOL","HSOL","VSOL",
+]);
+
+/** Namensmuster fuer Dinge, die keine Memecoins sind. */
+const BLOCKED_NAME = /xstock|backpack securities|\bwrapped\b|\bportal\b|staked\s|liquid\s?staking|\bvault\b|\bindex\b|tokenized|real\s?world/i;
+
+function isNoise(item) {
+  const sym = String(item.symbol || "").toUpperCase();
+  if (!sym) return true;
+  if (BLOCKED_SYMBOLS.has(sym)) return true;
+  if (BLOCKED_NAME.test(String(item.name || ""))) return true;
+
+  // Liquid-Staking-Token traegt Jupiter selbst als Tag.
+  if (item.tags && item.tags.indexOf("lst") !== -1) return true;
+
+  // Stablecoins erkennt man am Kurs, nicht am Namen: alles, was bei
+  // nennenswerter Groesse auf einem Dollar klebt, ist keiner von uns.
+  if (item.priceUsd != null && item.priceUsd > 0.97 && item.priceUsd < 1.03 && (item.marketCap || 0) > 500000) return true;
+
+  // Aktien-Token heissen fast immer "<TICKER>x" oder "<TICKER>X".
+  if (/^[A-Z]{2,5}x$/.test(String(item.symbol || ""))) return true;
+
+  return false;
+}
+
 async function buildFeed(query) {
   const filters = parseFilters(query);
   const warnings = [];
@@ -236,12 +276,10 @@ async function buildFeed(query) {
     }
   }
 
-  // Stablecoins, SOL und Wrapped-Kram fliegen raus - das ist kein Memecoin-Radar-Stoff.
-  const IGNORE = new Set(["SOL", "USDC", "USDT", "WSOL", "JUP", "JLP", "USDS", "PYUSD", "EURC", "USDG"]);
 
   const scored = [];
   for (const item of items) {
-    if (IGNORE.has(String(item.symbol || "").toUpperCase())) continue;
+    if (isNoise(item)) continue;
     if (!item.liquidityUsd && !item.volumeH1) continue;
     const result = scoreItem(item);
     const row = Object.assign({}, item, {
@@ -302,4 +340,4 @@ async function buildFeed(query) {
   };
 }
 
-module.exports = { buildFeed, parseFilters, DEFAULT_FILTERS };
+module.exports = { buildFeed, parseFilters, isNoise, DEFAULT_FILTERS };
