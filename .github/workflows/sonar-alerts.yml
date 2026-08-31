@@ -1,0 +1,41 @@
+name: SONAR Alerts
+
+# Warum GitHub Actions und nicht Vercel Cron: auf dem Hobby-Plan darf ein
+# Vercel-Cron nur einmal täglich laufen. Actions ist für öffentliche Repos
+# kostenlos und schafft alle 10 Minuten - näher dran geht kostenlos nicht.
+#
+# Das Zeitfenster (window) muss zum Intervall passen: der Endpunkt meldet nur
+# Coins, die jünger sind als window Minuten. So gibt es ohne Datenbank
+# genau einen Alarm je Coin.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry:
+        description: "Nur testen, nichts nach Telegram senden"
+        required: false
+        default: "0"
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Radar prüfen und Treffer melden
+        env:
+          BASE: https://sonar-website-chi.vercel.app
+          SECRET: ${{ secrets.SONAR_CRON_SECRET }}
+          DRY: ${{ github.event.inputs.dry || '0' }}
+        run: |
+          if [ -z "$SECRET" ]; then
+            echo "::error::Repository-Secret SONAR_CRON_SECRET fehlt."
+            exit 1
+          fi
+          response=$(curl -sS --max-time 60 -w "\n%{http_code}" \
+            "$BASE/api/alerts?secret=$SECRET&window=12&dry=$DRY")
+          body=$(echo "$response" | head -n -1)
+          code=$(echo "$response" | tail -n 1)
+          echo "HTTP $code"
+          echo "$body"
+          if [ "$code" != "200" ]; then exit 1; fi
