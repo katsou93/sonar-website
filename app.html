@@ -235,6 +235,7 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
     <div class="filters">
       <button class="preset" data-preset="a">Strategie A — defensiv</button>
       <button class="preset" data-preset="b">Strategie B — frisch</button>
+      <button class="preset" data-preset="frueh">🔔 Früh dran</button>
       <button class="preset" data-preset="echt">Echtes Volumen</button>
       <button class="preset on" data-preset="all">Alles</button>
       <div class="hspace" style="flex:1"></div>
@@ -252,7 +253,7 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
         <option value="any">egal</option><option value="graduated">migriert</option><option value="bonding_curve">auf der Kurve</option>
       </select></div>
       <div class="fld"><label>Sortierung</label><select id="f-sort">
-        <option value="heat">Hitze</option><option value="new">neu</option><option value="volume">Volumen</option><option value="score">Score</option><option value="organic">echtes Volumen</option><option value="holders">Holder</option>
+        <option value="heat">Hitze</option><option value="new">neu</option><option value="volume">Volumen</option><option value="score">Score</option><option value="organic">echtes Volumen</option><option value="holders">Holder</option><option value="early">Früh-Signal</option>
       </select></div>
     </div>
     <div id="radarstats"></div>
@@ -511,6 +512,7 @@ var radarLoaded = false;
 var PRESETS = {
   a:    { liq:30000, vol:10000, org:15, minage:1440, maxage:"",  score:70, stage:"graduated", sort:"score"   },
   b:    { liq:4000,  vol:2000,  org:5,  minage:3,    maxage:720, score:45, stage:"any",       sort:"heat"    },
+  frueh:{ liq:3000,  vol:1500,  org:3,  minage:3,    maxage:240, score:45, stage:"any",       sort:"early"   },
   echt: { liq:5000,  vol:3000,  org:25, minage:10,   maxage:"",  score:55, stage:"any",       sort:"organic" },
   all:  { liq:3000,  vol:1000,  org:0,  minage:3,    maxage:"",  score:0,  stage:"any",       sort:"heat"    }
 };
@@ -616,7 +618,8 @@ function renderTable(j){
       '<td class="mono">'+money(it.marketCap)+'</td>'+
       '<td class="mono">'+money(it.liquidityUsd)+'</td>'+
       '<td class="mono">'+money(it.volumeH1)+'</td>'+
-      '<td class="mono">'+num(it.holderCount)+'</td>'+
+      '<td class="mono">'+num(it.holderCount)+
+        (it.holderChangeH1!=null && it.holderChangeH1>5 ? '<div class="curve" style="color:var(--grn)">+'+Math.round(it.holderChangeH1)+'%</div>' : '')+'</td>'+
       '<td class="mono '+(it.priceChangeH1>=0?"up":"dn")+'">'+pctTxt(it.priceChangeH1,0)+'</td>'+
       '<td>'+phase+'</td>'+
       '<td>'+(fl||'<span class="mu2" style="font-size:11.5px">—</span>')+'</td>'+
