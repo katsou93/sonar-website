@@ -475,6 +475,138 @@ async function main() {
     assert.ok(!isNoise({ symbol: "EINS", name: "Ein Dollar Coin", priceUsd: 1.0, marketCap: 120000, tags: [] }));
   });
 
+  console.log("\nThemen erkennen");
+  const nar = require("../api/_lib/narrative");
+  const sectorOf = nar.sectorOf;
+
+  const ZUORDNUNG = [
+    ["popcat", "Popcat", "katze"],
+    ["MICHI", "michi", "katze"],
+    ["WIF", "dogwifhat", "hund"],
+    ["BONK", "Bonk", "hund"],
+    ["PEPE", "Pepe", "frosch"],
+    ["GOAT", "Goatseus Maximus", "tier"],
+    ["FARTCOIN", "Fartcoin", null],
+    ["CHILLGUY", "Just a chill guy", null],
+    ["AI16Z", "ai16z", "ki"],
+    ["TRUMP", "OFFICIAL TRUMP", "politik"],
+    ["BANANA", "Banana Gun", "essen"],
+    ["CHAD", "Gigachad", "kultur"],
+    ["MOON", "Moonshot", "weltraum"],
+    ["CAPY", "Capybara Nation", "tier"],
+  ];
+  for (const row of ZUORDNUNG) {
+    await check("\"" + row[1] + "\" landet bei " + (row[2] || "keiner Ecke"), () => {
+      assert.strictEqual(sectorOf({ symbol: row[0], name: row[1] }), row[2]);
+    });
+  }
+
+  // Die gefaehrlichen Faelle: kurze Begriffe duerfen NICHT als Teilstring
+  // treffen. Sonst ist jeder Coin mit "chain" im Namen ein KI-Coin.
+  const KEINE_FEHLTREFFER = [
+    ["CHAIN", "Chainlink Wrapped"],
+    ["ESCAPE", "Escape Velocity"],
+    ["CATALYST", "Catalyst Protocol"],
+    ["PAPER", "Paper Hands"],
+    ["LOCATION", "Location Token"],
+    ["GRAPE", "Grape Protocol"],
+    ["DOGMA", "Dogma"],
+  ];
+  for (const row of KEINE_FEHLTREFFER) {
+    await check("\"" + row[1] + "\" wird keiner Ecke zugeordnet", () => {
+      assert.strictEqual(sectorOf({ symbol: row[0], name: row[1] }), null,
+        row[1] + " wurde faelschlich einsortiert");
+    });
+  }
+
+  await check("eine Ecke mit zwei Mitgliedern ist noch kein Thema", () => {
+    const res = nar.measure([
+      { address: "a", symbol: "CAT1", name: "Cat One", priceChangeH1: 40, volumeH1: 1000 },
+      { address: "b", symbol: "CAT2", name: "Cat Two", priceChangeH1: 50, volumeH1: 1000 },
+    ]);
+    assert.strictEqual(res.sectors.length, 0);
+  });
+
+  await check("vier steigende Katzen ergeben ein heisses Thema", () => {
+    const katzen = [30, 25, 18, 22].map((chg, i) => ({
+      address: "cat" + i, symbol: "CAT" + i, name: "Cat " + i,
+      priceChangeH1: chg, volumeH1: 50000, volumeSurge: 2.5, liquidityUsd: 80000,
+    }));
+    const res = nar.measure(katzen);
+    assert.strictEqual(res.sectors.length, 1);
+    assert.strictEqual(res.sectors[0].key, "katze");
+    assert.ok(res.sectors[0].hot, "Ecke haette heiss sein muessen, Hitze " + res.sectors[0].heat);
+    assert.strictEqual(res.sectors[0].up, 4);
+  });
+
+  await check("ein einzelner Ausreisser macht die Ecke NICHT heiss", () => {
+    // Genau der Fehler, den ein naiver Durchschnitt machen wuerde: einer
+    // steht auf +400, die anderen drei liegen flach. Der Mittelwert waere
+    // +100 - die Breite verrät, dass da kein Thema laeuft.
+    const froesche = [400, -2, 1, -4].map((chg, i) => ({
+      address: "frog" + i, symbol: "PEPE" + i, name: "Pepe " + i,
+      priceChangeH1: chg, volumeH1: 20000, volumeSurge: 1.0, liquidityUsd: 50000,
+    }));
+    const res = nar.measure(froesche);
+    assert.strictEqual(res.sectors[0].key, "frosch");
+    assert.ok(!res.sectors[0].hot, "Ausreisser hat die Ecke faelschlich heiss gemacht, Hitze " + res.sectors[0].heat);
+  });
+
+  await check("der Nachzuegler in einer heissen Ecke wird gefunden", () => {
+    const hunde = [
+      { address: "d1", symbol: "DOG1", name: "Dog One", priceChangeH1: 35, volumeH1: 90000, volumeSurge: 3, liquidityUsd: 200000 },
+      { address: "d2", symbol: "DOG2", name: "Dog Two", priceChangeH1: 28, volumeH1: 80000, volumeSurge: 2.6, liquidityUsd: 180000 },
+      { address: "d3", symbol: "DOG3", name: "Dog Three", priceChangeH1: 22, volumeH1: 70000, volumeSurge: 2.2, liquidityUsd: 160000 },
+      { address: "d4", symbol: "DOG4", name: "Dog Four", priceChangeH1: 2, volumeH1: 40000, volumeSurge: 1.9, liquidityUsd: 120000 },
+    ];
+    const res = nar.measure(hunde);
+    const ecke = res.sectors[0];
+    assert.ok(ecke.hot);
+    assert.ok(ecke.laggards.length >= 1, "kein Nachzuegler gefunden");
+    assert.strictEqual(ecke.laggards[0].symbol, "DOG4");
+    assert.strictEqual(hunde[3].sectorLaggard, true);
+    assert.strictEqual(hunde[0].sectorLaggard, false);
+  });
+
+  await check("ein Nachzuegler ohne Volumen zaehlt nicht als Nachzuegler", () => {
+    const hunde = [
+      { address: "e1", symbol: "INU1", name: "Inu One", priceChangeH1: 35, volumeH1: 90000, volumeSurge: 3, liquidityUsd: 200000 },
+      { address: "e2", symbol: "INU2", name: "Inu Two", priceChangeH1: 28, volumeH1: 80000, volumeSurge: 2.6, liquidityUsd: 180000 },
+      { address: "e3", symbol: "INU3", name: "Inu Three", priceChangeH1: 22, volumeH1: 70000, volumeSurge: 2.2, liquidityUsd: 160000 },
+      { address: "e4", symbol: "INU4", name: "Inu Four", priceChangeH1: 1, volumeH1: 500, volumeSurge: 0.4, liquidityUsd: 120000 },
+    ];
+    const res = nar.measure(hunde);
+    assert.strictEqual(res.sectors[0].laggards.length, 0);
+  });
+
+  await check("eine kalte Ecke meldet gar keine Nachzuegler", () => {
+    const kalt = [1, -3, 0, 2].map((chg, i) => ({
+      address: "cold" + i, symbol: "MOON" + i, name: "Moon " + i,
+      priceChangeH1: chg, volumeH1: 10000, volumeSurge: 1.5, liquidityUsd: 60000,
+    }));
+    const res = nar.measure(kalt);
+    assert.ok(!res.sectors[0].hot);
+    assert.strictEqual(res.sectors[0].laggards.length, 0);
+  });
+
+  await check("ein spezifischer Treffer schlaegt einen allgemeinen", () => {
+    // "Capybara Moon" enthaelt "moon" (Wort) und "capybara" (Teilstring).
+    // Der spezifischere gewinnt.
+    assert.strictEqual(sectorOf({ symbol: "CAPYMOON", name: "Capybara Moon" }), "tier");
+  });
+
+  await check("Mehrzahl wird erkannt, schlaegt aber keine Einzahl", () => {
+    assert.strictEqual(sectorOf({ symbol: "FROGS", name: "Frogs United" }), "frosch");
+    // Der echte Fall: MEW heisst "cat in a dogs world". Die Einzahl "cat"
+    // muss die Mehrzahl "dogs" schlagen, sonst ist der bekannteste
+    // Katzen-Coin ein Hunde-Coin.
+    assert.strictEqual(sectorOf({ symbol: "MEW", name: "cat in a dogs world" }), "katze");
+  });
+
+  await check("camelCase wird korrekt zerlegt", () => {
+    assert.deepStrictEqual(nar.tokenize("dogWifHat"), ["dog", "wif", "hat"]);
+  });
+
   console.log(failures === 0 ? "\nAlle Tests bestanden.\n" : "\n" + failures + " Test(s) fehlgeschlagen.\n");
   process.exit(failures === 0 ? 0 : 1);
 }
