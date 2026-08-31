@@ -116,8 +116,19 @@ function evaluate(input) {
     } else {
       flags.push(flag("top10_ok", "green", "Breite Verteilung", "Top 10 halten nur " + pct(h.top10Pct) + " des frei handelbaren Angebots.", 0));
     }
+  } else if (h.topHoldersPctExternal != null) {
+    // Ersatzwert von Jupiter. Wir wissen nicht sicher, ob dort Pools
+    // herausgerechnet sind, deshalb bewusst weichere Schwellen und ein
+    // eigener Flag-Name - keine falsche Präzision vortäuschen.
+    if (h.topHoldersPctExternal > 45) {
+      flags.push(flag("top_holders_ext_high", "yellow", "Top-Holder halten " + pct(h.topHoldersPctExternal) + " (Jupiter)", "Fremdwert, Pools womöglich mitgezählt - als Richtung lesen, nicht als exakte Zahl. Hoch genug, um vorsichtig zu sein.", 12));
+    } else if (h.topHoldersPctExternal > 25) {
+      flags.push(flag("top_holders_ext_mid", "yellow", "Top-Holder halten " + pct(h.topHoldersPctExternal) + " (Jupiter)", "Fremdwert von Jupiter. Grenzwertig konzentriert.", 6));
+    } else {
+      flags.push(flag("top_holders_ext_ok", "green", "Top-Holder halten " + pct(h.topHoldersPctExternal) + " (Jupiter)", "Nach Jupiters Zahlen breit gestreut.", 0));
+    }
   } else if (!input.light) {
-    flags.push(flag("top10_unknown", "info", "Holder-Verteilung nicht ermittelbar", "Der RPC hat nicht geantwortet. Ohne diese Zahl fehlt der wichtigste Rug-Filter - im Zweifel nicht kaufen.", 10));
+    flags.push(flag("top10_unknown", "info", "Holder-Verteilung nicht ermittelbar", "Weder eigener RPC noch Jupiter liefern die Verteilung. Ohne diese Zahl fehlt der wichtigste Rug-Filter - im Zweifel nicht kaufen.", 10));
   }
 
   if (h.creatorPct != null && h.creatorPct > 5) {
@@ -191,6 +202,42 @@ function evaluate(input) {
   const txH1 = (m.txns && m.txns.h1 && m.txns.h1.buys + m.txns.h1.sells) || 0;
   if (age != null && age > 60 && txH1 < 10) {
     flags.push(flag("dead", "red", "Kaum noch Handel", "Nur " + txH1 + " Trades in der letzten Stunde. Der Coin ist durch.", 22));
+  }
+
+  // ---------- Echtes gegen künstliches Volumen ----------
+  //
+  // Der wichtigste Filter, den wir haben. Jupiter trennt organischen Umsatz
+  // von dem, was Bots untereinander hin- und herschieben. Ein Coin, dessen
+  // Umsatz zu 97 % aus Wash-Trading besteht, sieht im Chart aus wie Nachfrage
+  // und ist in Wirklichkeit eine Bühne, auf der du das Publikum bist.
+  const org = input.organic || {};
+  if (org.shareH1 != null && (m.volume && m.volume.h1) > 3000) {
+    const share = org.shareH1 * 100;
+    if (org.shareH1 < 0.03) {
+      flags.push(flag("wash_extreme", "red", "Nur " + share.toFixed(1) + "% echtes Volumen", "Der Rest sind Bots, die sich gegenseitig handeln. Der Umsatz im Chart ist keine Nachfrage - er ist Kulisse.", 22));
+    } else if (org.shareH1 < 0.1) {
+      flags.push(flag("wash_high", "yellow", "Nur " + share.toFixed(1) + "% echtes Volumen", "Überwiegend Bot-Umsatz. Es kann trotzdem laufen, aber die Zahlen im Chart bedeuten weniger, als sie aussehen.", 10));
+    } else if (org.shareH1 >= 0.3) {
+      flags.push(flag("organic_volume", "green", share.toFixed(0) + "% echtes Volumen", "Ungewöhnlich hoher Anteil echter Trades - hier kaufen tatsächlich Menschen.", 0));
+    }
+  }
+
+  if (org.scoreLabel === "high") {
+    flags.push(flag("organic_high", "green", "Jupiter-Qualität: hoch", "Jupiters eigene, bot-bereinigte Bewertung der Handelsaktivität ist hoch.", 0));
+  } else if (org.scoreLabel === "low" && age != null && age > 60) {
+    flags.push(flag("organic_low", "yellow", "Jupiter-Qualität: niedrig", "Die bot-bereinigte Aktivität ist schwach - wenig echtes Interesse hinter den Zahlen.", 5));
+  }
+
+  if (org.holderChangeH1 != null) {
+    if (org.holderChangeH1 < -15) {
+      flags.push(flag("holders_leaving", "red", Math.round(org.holderChangeH1) + "% Holder in einer Stunde weg", "Die Leute steigen aus. Wer jetzt kauft, kauft von ihnen.", 15));
+    } else if (org.holderChangeH1 > 50) {
+      flags.push(flag("holders_growing", "green", "+" + Math.round(org.holderChangeH1) + "% Holder in einer Stunde", "Es kommen echte neue Halter dazu, nicht nur Umsatz.", 0));
+    }
+  }
+
+  if (input.isToken2022) {
+    flags.push(flag("token2022", "info", "Token-2022-Standard", "Dieser Standard erlaubt Zusatzfunktionen wie Übertragungsgebühren. Bei pump.fun-Coins normal, aber ein Grund, den ersten Verkauf klein zu testen.", 0));
   }
 
   // ---------- Alter und Phase ----------
