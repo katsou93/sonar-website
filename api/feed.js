@@ -3,7 +3,8 @@
  * GET /api/feed
  * Parameter: minLiquidity, minVolumeH1, minAge, maxAge (Minuten),
  *            socials=1, stage=any|graduated|bonding_curve,
- *            minScore, sort=heat|new|volume|score, limit
+ *            minScore, sector=<themenschluessel>,
+ *            sort=heat|new|volume|score|organic|holders|early|surge|sector, limit
  */
 
 const { buildFeed } = require("./_lib/feed");
