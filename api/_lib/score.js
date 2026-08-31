@@ -157,6 +157,17 @@ function evaluate(input) {
     }
   }
 
+  // Flacher Pool ist kein Betrugsmerkmal, sondern eine Grenze für die
+  // Positionsgröße - deshalb bewusst milde bewertet und mit einem konkreten
+  // Hinweis statt einer roten Flagge. (Unter $1.500 greift oben das K.-o.)
+  if (m.liquidityUsd != null && m.liquidityUsd >= 1500) {
+    if (m.liquidityUsd < 5000) {
+      flags.push(flag("pool_very_shallow", "yellow", "Sehr flacher Pool (" + eur(m.liquidityUsd) + ")", "Nur Mini-Einsätze. Schon ein Verkauf im dreistelligen Bereich bewegt hier den Kurs spürbar.", 10));
+    } else if (m.liquidityUsd < 15000) {
+      flags.push(flag("pool_shallow", "info", "Flacher Pool (" + eur(m.liquidityUsd) + ")", "Handelbar, aber Position entsprechend klein halten - du bist bei größeren Beträgen dein eigener Gegenwind.", 4));
+    }
+  }
+
   // ---------- Handelsaktivität ----------
 
   if (m.volumeToLiquidity != null) {
