@@ -51,7 +51,7 @@ function parseFilters(query) {
     requireSocials: q.socials === "1" || q.socials === "true",
     stage: ["any", "graduated", "bonding_curve"].indexOf(q.stage) !== -1 ? q.stage : "any",
     minScore: num(q.minScore, DEFAULT_FILTERS.minScore),
-    sort: ["heat", "new", "volume", "score", "organic", "holders"].indexOf(q.sort) !== -1 ? q.sort : DEFAULT_FILTERS.sort,
+    sort: ["heat", "new", "volume", "score", "organic", "holders", "early"].indexOf(q.sort) !== -1 ? q.sort : DEFAULT_FILTERS.sort,
     limit: Math.min(200, Math.max(1, num(q.limit, DEFAULT_FILTERS.limit))),
   };
 }
@@ -68,6 +68,32 @@ function heatOf(item) {
   const real = item.organicShareH1 == null ? 0.5 : Math.max(0.1, Math.min(1, item.organicShareH1 * 3));
   const freshness = item.ageMinutes == null ? 1 : Math.max(0.25, Math.min(1, 720 / (item.ageMinutes + 60)));
   return (turnover * 2 + momentum) * real * freshness;
+}
+
+/**
+ * Früh-Signal: der on-chain-Schatten von Social-Buzz.
+ *
+ * Einen X- oder Telegram-Feed nach frühen Calls zu durchsuchen, geht ohne
+ * bezahlten API-Zugang nicht verlässlich. Was aber messbar ist: was ein
+ * früher Call auslöst. Wenn irgendwo jemand mit Reichweite einen Coin
+ * erwähnt, steigt binnen Minuten die Holder-Zahl, es kommen echte Käufer
+ * dazu (keine Bots), und die Liquidität wächst - und zwar solange der Coin
+ * noch klein ist. Genau diese drei Bewegungen messen wir.
+ *
+ * Der Wert ist bewusst nachrechenbar: Holder-Wachstum zählt am stärksten,
+ * echte Käufer als zweites, wachsende Liquidität als drittes, und alles
+ * verfällt mit dem Alter. Ein Coin, der das gleichzeitig zeigt, ist genau
+ * der Moment, den man sonst durch Scrollen sucht.
+ */
+function earlyOf(item) {
+  const holderGrowth = Math.max(0, item.holderChangeH1 || 0) / 100;
+  const realBuyers = Math.min(1.5, (item.organicBuyersH1 || 0) / 40);
+  const liqGrowth = Math.max(0, item.liquidityChangeH1 || 0) / 150;
+  const age = item.ageMinutes == null ? 999 : item.ageMinutes;
+  const freshness = age <= 180 ? 1 : Math.max(0.15, Math.min(1, 360 / age));
+  // Was schon gross ist, kann nicht mehr "früh" sein.
+  const small = !item.marketCap ? 1 : Math.max(0.2, Math.min(1, 2000000 / item.marketCap));
+  return (holderGrowth * 2 + realBuyers + liqGrowth) * freshness * small;
 }
 
 function scoreItem(item) {
@@ -168,6 +194,7 @@ async function buildFeed(query) {
       hasSocials: !!(item.twitter || item.telegram || item.website),
     });
     row.heat = heatOf(row);
+    row.early = earlyOf(row);
     scored.push(row);
   }
 
@@ -189,6 +216,7 @@ async function buildFeed(query) {
     if (filters.sort === "score") return b.score - a.score;
     if (filters.sort === "organic") return (b.organicShareH1 || 0) - (a.organicShareH1 || 0);
     if (filters.sort === "holders") return (b.holderCount || 0) - (a.holderCount || 0);
+    if (filters.sort === "early") return b.early - a.early;
     return b.heat - a.heat;
   });
 
