@@ -300,7 +300,7 @@ var KEY = localStorage.getItem("sonar_pw") || "";
 /** Jeder Datenaufruf traegt das Passwort im Header - nicht in der URL, damit es nicht in Logs landet. */
 function apiFetch(path){
   return fetch(path, { headers: { "x-sonar-key": KEY } }).then(function(r){
-    if(r.status === 401){ lockOut(); throw new Error("Zugang abgelaufen"); }
+    if(r.status === 401){ lockOut(); var err = new Error("Zugang abgelaufen"); err.locked = true; throw err; }
     return r.json();
   });
 }
@@ -341,27 +341,33 @@ document.getElementById("gatepw").addEventListener("keydown", function(e){ if(e.
 
 /* ---------- helpers ---------- */
 function el(id){ return document.getElementById(id); }
-function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
+function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];}); }
+/** Nur http(s) durchlassen - URLs kommen teils aus Token-Metadaten, die der Ersteller kontrolliert. */
+function safeUrl(u){ return /^https?:\/\//i.test(String(u||"")) ? String(u) : ""; }
 function money(n){
   if(n==null||!isFinite(n)) return "—";
+  if(n===0) return "$0";
   if(n>=1e9) return "$"+(n/1e9).toFixed(2)+"B";
   if(n>=1e6) return "$"+(n/1e6).toFixed(2)+"M";
   if(n>=1e3) return "$"+(Math.round(n/100)/10)+"k";
   return "$"+(n>=1?Math.round(n):n.toFixed(6));
 }
 function pctTxt(n,dec){ return n==null||!isFinite(n) ? "—" : (n>=0?"+":"")+n.toFixed(dec==null?1:dec)+"%"; }
+function dirClass(n){ return n==null||!isFinite(n) ? "mu2" : (n>=0?"up":"dn"); }
 function age(min){
   if(min==null) return "—";
   if(min<60) return min+" Min";
-  if(min<1440) return Math.round(min/60)+" Std";
-  return Math.round(min/1440)+" Tage";
+  if(min<1440) return Math.floor(min/60)+" Std";
+  var d = Math.floor(min/1440);
+  return d+(d===1?" Tag":" Tage");
 }
 function scoreColor(s,v){ return v==="avoid"?"b-r":v==="caution"?"b-y":"b-g"; }
 function initials(sym){ return String(sym||"?").replace(/[^A-Za-z0-9]/g,"").slice(0,3).toUpperCase() || "?"; }
 function avatar(url,sym,cls){
   var bg = "linear-gradient(135deg,#14f195,#3b9dff)";
   var base = '<div class="'+cls+'" style="background:'+bg+';position:relative;overflow:hidden">'+esc(initials(sym));
-  if(url) base += '<img src="'+esc(url)+'" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" onerror="this.remove()">';
+  var safe = safeUrl(url);
+  if(safe) base += '<img src="'+esc(safe)+'" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" onerror="this.remove()">';
   return base + '</div>';
 }
 
@@ -373,7 +379,9 @@ for(var i=0;i<tabs.length;i++){
     document.querySelectorAll(".tab").forEach(function(t){ t.classList.toggle("on", t===this); }, this);
     document.querySelectorAll(".view").forEach(function(s){ s.classList.toggle("on", s.id==="view-"+v); });
     if(v==="radar" && !radarLoaded) loadRadar();
-    if(v==="watchlist") renderWatchlist();
+    if(v==="watchlist" && !this.classList.contains("was-on")) renderWatchlist();
+    document.querySelectorAll(".tab").forEach(function(t){ t.classList.remove("was-on"); });
+    this.classList.add("was-on");
     location.hash = v;
   });
 }
@@ -391,7 +399,7 @@ function scan(input){
       scanOut.innerHTML = renderReport(j.report);
       bindReport(j.report);
     })
-    .catch(function(e){ scanOut.innerHTML = '<div class="err">Netzwerkfehler: '+esc(e.message)+'</div>'; });
+    .catch(function(e){ if(e && e.locked) return; scanOut.innerHTML = '<div class="err">Netzwerkfehler: '+esc(e.message)+'</div>'; });
 }
 
 function renderReport(r){
@@ -412,7 +420,7 @@ function renderReport(r){
     ["Liquidität", money(m.liquidityUsd)],
     ["Volumen 1h", money(m.volume.h1)],
     ["Echtes Volumen", orgTxt],
-    ["Kurs 1h", '<span class="'+(m.priceChange.h1>=0?"up":"dn")+'">'+pctTxt(m.priceChange.h1,0)+"</span>"],
+    ["Kurs 1h", '<span class="'+dirClass(m.priceChange.h1)+'">'+pctTxt(m.priceChange.h1,0)+"</span>"],
     ["Alter", age(r.ageMinutes)],
     ["Holder", h.totalHolders==null?"—":num(h.totalHolders)],
     ["Käufe/Verk. 1h", m.buySellRatioH1==null?"—":m.buySellRatioH1.toFixed(2)]
@@ -446,7 +454,7 @@ function renderReport(r){
       '<div class="grid">'+cells+'</div>'+
       '<div class="linkrow">'+
         '<a class="btn btn-g btn-sm" target="_blank" rel="noopener" href="https://pump.fun/coin/'+esc(r.address)+'">pump.fun</a>'+
-        (r.dexUrl?'<a class="btn btn-g btn-sm" target="_blank" rel="noopener" href="'+esc(r.dexUrl)+'">Chart</a>':'')+
+        (safeUrl(r.dexUrl)?'<a class="btn btn-g btn-sm" target="_blank" rel="noopener" href="'+esc(safeUrl(r.dexUrl))+'">Chart</a>':'')+
         '<a class="btn btn-g btn-sm" target="_blank" rel="noopener" href="https://solscan.io/token/'+esc(r.address)+'">Solscan</a>'+
         '<a class="btn btn-g btn-sm" target="_blank" rel="noopener" href="https://rugcheck.xyz/tokens/'+esc(r.address)+'">Rugcheck</a>'+
         '<button class="btn btn-g btn-sm" id="addwl">Auf die Watchlist</button>'+
@@ -471,7 +479,7 @@ function renderReport(r){
         '<div>In Pools gebunden: <b>'+(h.poolSharePct==null?"—":h.poolSharePct.toFixed(1)+"%")+'</b></div>'+
         '<div>Ersteller hält: <b>'+(h.creatorPct==null?"—":h.creatorPct.toFixed(1)+"%")+'</b></div>'+
         '<div>Holder gesamt: <b>'+(h.totalHolders==null?"—":h.totalHolders)+'</b></div>'+
-        '<div>Holder 1h: <b class="'+((r.holderChangeH1||0)>=0?"up":"dn")+'">'+(r.holderChangeH1==null?"—":pctTxt(r.holderChangeH1,0))+'</b></div>'+
+        '<div>Holder 1h: <b class="'+dirClass(r.holderChangeH1)+'">'+(r.holderChangeH1==null?"—":pctTxt(r.holderChangeH1,0))+'</b></div>'+
         '<div style="margin-top:10px;color:var(--mu2);font-size:11.5px;line-height:1.6">Prozente beziehen sich auf das frei handelbare Angebot. Bonding Curve und AMM-Pools sind herausgerechnet — sonst sähe jeder frische Coin nach einem 79-%-Wal aus.</div>'+
       '</div></div>'+
     '<div class="card"><h3>Echtes gegen künstliches Volumen</h3><div class="rules" style="font-size:12.5px">'+
@@ -483,19 +491,27 @@ function renderReport(r){
       '<div style="margin-top:10px;color:var(--mu2);font-size:11.5px;line-height:1.6">Jupiter trennt echten Umsatz von Bots, die sich gegenseitig handeln. Ein niedriger Wert heißt: das Volumen im Chart ist Kulisse, keine Nachfrage.</div>'+
     '</div></div>'+
     '<div class="card"><h3>Rechte am Contract</h3><div class="rules" style="font-size:12.5px">'+
-      '<div>Mint-Authority: <b class="'+(r.authorities.mintAuthority?"dn":"up")+'">'+(r.authorities.mintAuthority?"AKTIV":"abgeschaltet")+'</b></div>'+
-      '<div>Freeze-Authority: <b class="'+(r.authorities.freezeAuthority?"dn":"up")+'">'+(r.authorities.freezeAuthority?"AKTIV":"abgeschaltet")+'</b></div>'+
+      authRow("Mint-Authority", r.authorities.mintAuthority, r.authorities.authoritiesKnown)+
+      authRow("Freeze-Authority", r.authorities.freezeAuthority, r.authorities.authoritiesKnown)+
       '<div>LP gesperrt: <b>'+(r.authorities.lpLockedPct==null?"unbekannt":r.authorities.lpLockedPct.toFixed(0)+"%")+'</b></div>'+
     '</div></div>'+
   '</div></div>';
 }
 
+/** Unbekannt wird grau und heisst "unbekannt" - niemals grün "abgeschaltet". */
+function authRow(label, value, known){
+  if(known === false) return '<div>'+label+': <b class="mu2">unbekannt</b></div>';
+  return '<div>'+label+': <b class="'+(value?"dn":"up")+'">'+(value?"AKTIV":"abgeschaltet")+'</b></div>';
+}
+
 function bindReport(r){
   var copy = el("copyaddr");
   if(copy) copy.addEventListener("click", function(){
-    navigator.clipboard.writeText(r.address);
-    var old = copy.textContent; copy.textContent = "kopiert ✓";
-    setTimeout(function(){ copy.textContent = old; }, 1200);
+    var old = copy.textContent;
+    Promise.resolve(navigator.clipboard && navigator.clipboard.writeText(r.address))
+      .then(function(){ copy.textContent = "kopiert ✓"; })
+      .catch(function(){ copy.textContent = "Kopieren nicht möglich"; })
+      .then(function(){ setTimeout(function(){ copy.textContent = old; }, 1400); });
   });
   var add = el("addwl");
   if(add) add.addEventListener("click", function(){
@@ -539,7 +555,7 @@ function loadRadar(){
     "&minVolumeH1="+(+el("f-vol").value||0)+
     "&minOrganic="+(+el("f-organic").value||0)+
     "&minAge="+(+el("f-minage").value||0)+
-    "&maxAge="+(el("f-maxage").value||"")+
+    "&maxAge="+encodeURIComponent(String(el("f-maxage").value||"").replace(/[^0-9]/g,""))+
     "&minScore="+(+el("f-score").value||0)+
     "&stage="+el("f-stage").value+
     "&sort="+el("f-sort").value+"&limit=100";
@@ -555,7 +571,7 @@ function loadRadar(){
       out.innerHTML = renderTable(j);
       bindTable();
     })
-    .catch(function(e){ out.innerHTML='<div class="err">Netzwerkfehler: '+esc(e.message)+'</div>'; });
+    .catch(function(e){ if(e && e.locked) return; out.innerHTML='<div class="err">Netzwerkfehler: '+esc(e.message)+'</div>'; });
 }
 
 function renderStats(j){
@@ -620,19 +636,22 @@ function renderTable(j){
       '<td class="mono">'+money(it.volumeH1)+'</td>'+
       '<td class="mono">'+num(it.holderCount)+
         (it.holderChangeH1!=null && it.holderChangeH1>5 ? '<div class="curve" style="color:var(--grn)">+'+Math.round(it.holderChangeH1)+'%</div>' : '')+'</td>'+
-      '<td class="mono '+(it.priceChangeH1>=0?"up":"dn")+'">'+pctTxt(it.priceChangeH1,0)+'</td>'+
+      '<td class="mono '+dirClass(it.priceChangeH1)+'">'+pctTxt(it.priceChangeH1,0)+'</td>'+
       '<td>'+phase+'</td>'+
       '<td>'+(fl||'<span class="mu2" style="font-size:11.5px">—</span>')+'</td>'+
     '</tr>';
   }).join("");
   return '<div class="tablewrap"><table><thead><tr>'+
-    '<th>Coin</th><th>Score</th><th title="Anteil echten Volumens, Bot-Handel herausgerechnet">Echt</th><th>Alter</th><th>MCap</th><th>Liquidität</th><th>Vol 1h</th><th>Holder</th><th>1h</th><th>Phase</th><th>Auffällig</th>'+
+    '<th>Coin</th><th title="Vorab-Bewertung nur aus Marktdaten. Der volle Check beim Klick prüft zusätzlich Holder-Verteilung, LP-Sperre und Contract-Risiken und fällt oft strenger aus.">Vor-Score</th><th title="Anteil echten Volumens, Bot-Handel herausgerechnet">Echt</th><th>Alter</th><th>MCap</th><th>Liquidität</th><th>Vol 1h</th><th>Holder</th><th>1h</th><th>Phase</th><th>Auffällig</th>'+
     '</tr></thead><tbody>'+rows+'</tbody></table></div>'+
-    '<p class="hint" style="margin-top:12px"><b style="color:var(--mu)">Echt</b> = wie viel des Umsatzes von echten Menschen kommt statt von Bots, die sich gegenseitig handeln. Unter 3 % ist der Chart reine Kulisse. Zeile anklicken für den vollen Check.</p>';
+    '<p class="hint" style="margin-top:12px"><b style="color:var(--mu)">Echt</b> = wie viel des Umsatzes von echten Menschen kommt statt von Bots, die sich gegenseitig handeln. Unter 3 % ist der Chart reine Kulisse. <b style="color:var(--mu)">Vor-Score</b> = schnelle Vorabbewertung aus Marktdaten; der volle Check beim Klick prüft zusätzlich Holder-Verteilung, LP-Sperre und Contract-Risiken und fällt oft strenger aus.</p>';
 }
 
 function bindTable(){
-  document.querySelectorAll("tbody tr").forEach(function(tr){
+  // Ausdrücklich nur die Radar-Tabelle: die Watchlist liegt gleichzeitig im
+  // DOM (nur ausgeblendet) und sammelte sonst bei jeder Aktualisierung einen
+  // weiteren Klick-Handler ein.
+  document.querySelectorAll("#radarout tbody tr").forEach(function(tr){
     tr.addEventListener("click", function(){
       var addr = tr.getAttribute("data-addr");
       document.querySelector('.tab[data-view="scanner"]').click();
@@ -654,37 +673,63 @@ function addToWatchlist(address, symbol){
   setWatchlist(list.slice(0,50));
 }
 
-function renderWatchlist(){
-  var list = getWatchlist(), out = el("wlout");
-  if(!list.length){ out.innerHTML = '<div class="empty">Noch nichts auf der Watchlist.<br><span class="mu2">Im Scanner unten auf „Auf die Watchlist“ klicken.</span></div>'; return; }
-  out.innerHTML = '<div class="tablewrap"><table><thead><tr><th>Coin</th><th>Score</th><th>Echt</th><th>Alter</th><th>MCap</th><th>Liquidität</th><th>Vol 1h</th><th>1h</th><th></th></tr></thead><tbody id="wlbody">'+
-    list.map(function(x){ return '<tr data-addr="'+esc(x.address)+'"><td><div class="tok">'+avatar(null,x.symbol,"av")+'<div><div class="tk">'+esc(x.symbol||"?")+'</div><div class="tn mono">'+esc(x.address.slice(0,6))+'…</div></div></div></td>'+
-      '<td colspan="7" class="mu2" style="font-size:12px">wird geprüft <span class="spin"></span></td>'+
-      '<td><button class="btn btn-g btn-sm wl-del" data-addr="'+esc(x.address)+'">×</button></td></tr>'; }).join("")+
-    '</tbody></table></div>';
-  bindWatchlistButtons();
-  list.forEach(function(x){ refreshWatchRow(x.address); });
+var wlGeneration = 0;
+
+/** Eine Watchlist-Zeile immer VOLLSTÄNDIG bauen - nie einzelne Zellen ersetzen. */
+function wlRow(entry, r, state){
+  var cells;
+  if(state === "loading"){
+    cells = '<td colspan="7" class="mu2" style="font-size:12px">wird geprüft <span class="spin"></span></td>';
+  } else if(state === "error"){
+    cells = '<td colspan="7" class="mu2" style="font-size:12px">'+esc(r)+'</td>';
+  } else {
+    var m = r.market;
+    cells = '<td><span class="scorepill '+scoreColor(r.score,r.verdict)+'">'+r.score+'</span></td>'+
+      '<td>'+organicCell(r.organic ? r.organic.shareH1 : null)+'</td>'+
+      '<td class="mono">'+age(r.ageMinutes)+'</td>'+
+      '<td class="mono">'+money(m.marketCap)+'</td>'+
+      '<td class="mono">'+money(m.liquidityUsd)+'</td>'+
+      '<td class="mono">'+money(m.volume.h1)+'</td>'+
+      '<td class="mono '+dirClass(m.priceChange.h1)+'">'+pctTxt(m.priceChange.h1,0)+'</td>';
+  }
+  var sym = (r && r.symbol) || entry.symbol;
+  return '<tr data-addr="'+esc(entry.address)+'">'+
+    '<td><div class="tok">'+avatar((r&&r.imageUrl)||null, sym, "av")+
+      '<div style="min-width:0"><div class="tk">'+esc(sym||"?")+'</div>'+
+      '<div class="tn mono">'+esc(entry.address.slice(0,6))+'…</div></div></div></td>'+
+    cells+
+    '<td><button class="btn btn-g btn-sm wl-del" data-addr="'+esc(entry.address)+'">×</button></td>'+
+  '</tr>';
 }
 
-function refreshWatchRow(address){
-  apiFetch("/api/scan?address="+encodeURIComponent(address))
+function renderWatchlist(){
+  var list = getWatchlist(), out = el("wlout");
+  var generation = ++wlGeneration;   // ältere, noch laufende Abrufe verfallen damit
+  if(!list.length){
+    out.innerHTML = '<div class="empty">Noch nichts auf der Watchlist.<br><span class="mu2">Im Scanner unten auf „Auf die Watchlist" klicken.</span></div>';
+    return;
+  }
+  out.innerHTML = '<div class="tablewrap"><table><thead><tr><th>Coin</th><th>Score</th><th>Echt</th><th>Alter</th><th>MCap</th><th>Liquidität</th><th>Vol 1h</th><th>1h</th><th></th></tr></thead><tbody id="wlbody">'+
+    list.map(function(x){ return wlRow(x, null, "loading"); }).join("")+
+    '</tbody></table></div>';
+  bindWatchlistButtons();
+  list.forEach(function(x){ refreshWatchRow(x, generation); });
+}
+
+function refreshWatchRow(entry, generation){
+  apiFetch("/api/scan?address="+encodeURIComponent(entry.address))
     .then(function(j){
-      var tr = document.querySelector('#wlbody tr[data-addr="'+address+'"]');
+      if(generation !== wlGeneration) return;            // Antwort eines alten Durchlaufs
+      var tr = document.querySelector('#wlbody tr[data-addr="'+entry.address+'"]');
       if(!tr) return;
-      if(!j.ok){ tr.children[1].outerHTML = '<td colspan="7" class="mu2" style="font-size:12px">'+esc(j.error)+'</td>'; return; }
-      var r = j.report, m = r.market;
-      var cells = '<td><span class="scorepill '+scoreColor(r.score,r.verdict)+'">'+r.score+'</span></td>'+
-        '<td>'+organicCell(r.organic ? r.organic.shareH1 : null)+'</td>'+
-        '<td class="mono">'+age(r.ageMinutes)+'</td>'+
-        '<td class="mono">'+money(m.marketCap)+'</td>'+
-        '<td class="mono">'+money(m.liquidityUsd)+'</td>'+
-        '<td class="mono">'+money(m.volume.h1)+'</td>'+
-        '<td class="mono '+(m.priceChange.h1>=0?"up":"dn")+'">'+pctTxt(m.priceChange.h1,0)+'</td>';
-      tr.children[1].outerHTML = cells;
-      var av = tr.querySelector(".tk"); if(av) av.textContent = r.symbol || "?";
-      tr.addEventListener("click", function(e){
+      tr.outerHTML = j.ok ? wlRow(entry, j.report, "ok") : wlRow(entry, j.error, "error");
+      bindWatchlistButtons();
+      var fresh = document.querySelector('#wlbody tr[data-addr="'+entry.address+'"]');
+      if(fresh && j.ok) fresh.addEventListener("click", function(e){
         if(e.target.classList.contains("wl-del")) return;
-        document.querySelector('.tab[data-view="scanner"]').click(); window.scrollTo(0,0); scan(address);
+        document.querySelector('.tab[data-view="scanner"]').click();
+        window.scrollTo(0,0);
+        scan(entry.address);
       });
     })
     .catch(function(){});
@@ -692,6 +737,8 @@ function refreshWatchRow(address){
 
 function bindWatchlistButtons(){
   document.querySelectorAll(".wl-del").forEach(function(b){
+    if(b.dataset.bound) return;
+    b.dataset.bound = "1";
     b.addEventListener("click", function(e){
       e.stopPropagation();
       setWatchlist(getWatchlist().filter(function(x){ return x.address!==b.getAttribute("data-addr"); }));
