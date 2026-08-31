@@ -108,8 +108,84 @@ function multiplePayload(params) {
   };
 }
 
+/** Jupiter-Asset in der echten Form der lite-API. */
+function jupAsset(over) {
+  const o = over || {};
+  return Object.assign(
+    {
+      id: MINT,
+      name: "Testcoin",
+      symbol: "TEST",
+      icon: "https://example.com/i.png",
+      decimals: 6,
+      dev: "Creator11111111111111111111111111111111111111",
+      circSupply: 1000000000,
+      totalSupply: 1000000000,
+      tokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      launchpad: "pump.fun",
+      graduatedPool: "PoolAddr",
+      graduatedAt: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString(),
+      holderCount: 1240,
+      fdv: 640000,
+      mcap: 640000,
+      usdPrice: 0.00042,
+      liquidity: 78000,
+      organicScore: 66,
+      organicScoreLabel: "medium",
+      audit: { mintAuthorityDisabled: true, freezeAuthorityDisabled: true, topHoldersPercentage: 17.2 },
+      stats1h: {
+        priceChange: 24, holderChange: 12, liquidityChange: 8,
+        buyVolume: 22000, sellVolume: 20000,
+        buyOrganicVolume: 9000, sellOrganicVolume: 8000,
+        numBuys: 180, numSells: 90, numTraders: 300, numOrganicBuyers: 90, numNetBuyers: 60,
+      },
+      stats24h: {
+        priceChange: 120, holderChange: 200,
+        buyVolume: 160000, sellVolume: 150000,
+        buyOrganicVolume: 60000, sellOrganicVolume: 55000,
+        numBuys: 900, numSells: 700, numTraders: 1200, numOrganicBuyers: 400, numNetBuyers: 200,
+      },
+      firstPool: { id: "PoolAddr", createdAt: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString() },
+      createdAt: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString(),
+      tags: [],
+    },
+    o,
+  );
+}
+
+/** Kandidatenliste mit eindeutigen Adressen, um die Entdopplung zu prüfen. */
+function jupList(count, prefix) {
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    out.push(
+      jupAsset({
+        id: prefix + String(i).padStart(4, "0") + "1".repeat(34),
+        symbol: prefix + i,
+        name: prefix + " " + i,
+      }),
+    );
+  }
+  return out;
+}
+
 global.fetch = function (url, options) {
   const href = String(url);
+
+  if (href.indexOf("datapi.jup.ag") !== -1) {
+    return jsonResponse({ pools: [{ id: "p1", bondingCurve: 0.42, baseAsset: jupAsset({ id: "POOLONLY" + "1".repeat(35), symbol: "POOL", graduatedAt: null }) }] });
+  }
+  if (href.indexOf("jup.ag") !== -1) {
+    if (scenario === "jupiter-down") return Promise.resolve({ ok: false, status: 503, json: () => Promise.resolve({}) });
+    if (href.indexOf("/search?query=") !== -1) {
+      const ids = decodeURIComponent(href.split("query=")[1] || "").split(",");
+      if (scenario === "wash") return jsonResponse([jupAsset({ stats1h: Object.assign(jupAsset().stats1h, { buyOrganicVolume: 200, sellOrganicVolume: 150 }) })]);
+      return jsonResponse(ids.map((id) => jupAsset({ id: id })));
+    }
+    if (href.indexOf("/recent") !== -1) return jsonResponse(jupList(20, "R"));
+    if (href.indexOf("/toporganicscore/") !== -1) return jsonResponse(jupList(15, "O"));
+    if (href.indexOf("/toptraded/") !== -1) return jsonResponse(jupList(15, "T"));
+    return jsonResponse([]);
+  }
 
   if (href.indexOf("api.dexscreener.com/latest/dex/tokens") !== -1) {
     if (scenario === "thin") return jsonResponse(dexPayload({ liquidity: { usd: 900 } }));
@@ -197,8 +273,8 @@ async function main() {
   });
   await check("Strategie A akzeptiert den gereiften Coin", () =>
     assert.strictEqual(good.fit.defensive, true, "Blocker: " + good.fit.defensiveBlockers.join(", ")));
-  await check("alle drei Quellen gemeldet", () =>
-    assert.deepStrictEqual(good.sources, { dexscreener: true, rugcheck: true, rpc: true }));
+  await check("alle vier Quellen gemeldet", () =>
+    assert.deepStrictEqual(good.sources, { dexscreener: true, rugcheck: true, rpc: true, jupiter: true }));
 
   console.log("\nMint-Authority aktiv");
   setScenario("mintable");
@@ -226,17 +302,59 @@ async function main() {
   const dumping = await scan(MINT);
   await check("Verkaufsdruck wird erkannt", () => assert.ok(dumping.flags.some((f) => f.id === "sell_pressure")));
 
+  console.log("\nBot-Volumen");
+  setScenario("wash");
+  const wash = await scan(MINT);
+  await check("Wash-Trading wird erkannt und rot geflaggt", () => {
+    const f = wash.flags.find((x) => x.id === "wash_extreme");
+    assert.ok(f, "kein wash_extreme-Flag: " + wash.flags.map((x) => x.id).join(", "));
+    assert.strictEqual(f.level, "red");
+  });
+  await check("Holder-Zahl kommt von Jupiter", () => assert.strictEqual(wash.holders.totalHolders, 1240));
+
   console.log("\nRadar");
   setScenario("healthy");
-  const feed = await buildFeed({ minLiquidity: 1000, minVolumeH1: 100, minAge: 0 });
+  const feed = await buildFeed({ minLiquidity: 1000, minVolumeH1: 100, minAge: 0, limit: 200 });
   await check("liefert Einträge mit Score", () => {
     assert.ok(feed.items.length >= 1);
     assert.ok(typeof feed.items[0].score === "number");
     assert.ok(feed.items[0].heat >= 0);
   });
+  await check("viele Kandidaten statt einer Handvoll", () => {
+    // 20 aus recent + 15 organic + 15 traded + 1 Pool, über alle Zeiträume entdoppelt
+    assert.ok(feed.scanned >= 45, "nur " + feed.scanned + " Kandidaten");
+  });
+  await check("Adressen sind entdoppelt", () => {
+    const seen = new Set(feed.items.map((i) => i.address));
+    assert.strictEqual(seen.size, feed.items.length);
+  });
+  await check("Kurvenfortschritt aus der Pool-Liste kommt an", () => {
+    const withCurve = feed.items.find((i) => i.bondingCurvePct != null);
+    assert.ok(withCurve, "kein Eintrag mit bondingCurvePct");
+    assert.ok(Math.abs(withCurve.bondingCurvePct - 42) < 0.001);
+  });
   await check("Filter greifen", async () => {
     const strict = await buildFeed({ minLiquidity: 10000000 });
     assert.strictEqual(strict.items.length, 0);
+  });
+  await check("Sortierung nach echtem Volumen läuft", async () => {
+    const byOrganic = await buildFeed({ minLiquidity: 1000, minVolumeH1: 100, minAge: 0, sort: "organic", limit: 200 });
+    for (let i = 1; i < byOrganic.items.length; i++) {
+      assert.ok((byOrganic.items[i - 1].organicShareH1 || 0) >= (byOrganic.items[i].organicShareH1 || 0));
+    }
+  });
+
+  console.log("\nJupiter fällt aus");
+  setScenario("jupiter-down");
+  const degraded = await buildFeed({ minLiquidity: 0, minVolumeH1: 0, minAge: 0 });
+  await check("Radar stürzt nicht ab, sondern warnt", () => {
+    assert.ok(Array.isArray(degraded.items));
+    assert.ok(degraded.warnings.some((w) => /Jupiter/.test(w)), "keine Warnung: " + JSON.stringify(degraded.warnings));
+  });
+  await check("Scan läuft ohne Jupiter weiter", async () => {
+    const still = await scan(MINT);
+    assert.strictEqual(still.sources.jupiter, false);
+    assert.ok(still.score >= 0);
   });
 
   console.log(failures === 0 ? "\nAlle Tests bestanden.\n" : "\n" + failures + " Test(s) fehlgeschlagen.\n");
