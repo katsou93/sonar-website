@@ -74,6 +74,17 @@ function evaluate(input) {
       ),
     );
   }
+  if (input.authoritiesKnown === false) {
+    flags.push(
+      flag(
+        "authorities_unknown",
+        "yellow",
+        "Contract-Rechte nicht prüfbar",
+        "Keine Quelle konnte sagen, ob Mint- und Freeze-Rechte abgeschaltet sind. Das ist die Frage, an der ein Rug hängt - ohne Antwort darauf ist der Rest des Berichts nur die halbe Geschichte.",
+        18,
+      ),
+    );
+  }
   if (rc && rc.rugged) {
     flags.push(flag("rugged", "red", "Rugcheck meldet: bereits gerugged", "Finger weg.", 80, FATAL));
   }

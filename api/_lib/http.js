@@ -9,16 +9,38 @@
 
 const cache = new Map();
 
+/**
+ * Cache mit Zusammenfassung laufender Abrufe.
+ *
+ * Wir legen das PROMISE ab, nicht erst den Wert. Zwei gleichzeitige
+ * Anfragen nach demselben Schlüssel - etwa wenn Scan und Holder-Analyse
+ * beide die Mint-Daten brauchen, oder wenn die Watchlist zehn Coins
+ * gleichzeitig prüft - teilen sich damit einen einzigen Request statt
+ * zwei gegen dieselbe gedrosselte Quelle zu feuern.
+ */
 async function cached(key, ttlMs, load) {
   const hit = cache.get(key);
-  if (hit && hit.expiresAt > Date.now()) return hit.value;
-  const value = await load();
-  cache.set(key, { value, expiresAt: Date.now() + ttlMs });
+  if (hit && hit.expiresAt > Date.now()) return hit.promise;
+
+  const promise = load();
+  cache.set(key, { promise: promise, expiresAt: Date.now() + ttlMs });
+  // Ein fehlgeschlagener Abruf darf nicht für die ganze TTL "kleben".
+  promise.catch(() => {
+    const current = cache.get(key);
+    if (current && current.promise === promise) cache.delete(key);
+  });
+
   if (cache.size > 400) {
     const now = Date.now();
     for (const [k, v] of cache) if (v.expiresAt < now) cache.delete(k);
+    // Falls trotzdem alles frisch ist: die Hälfte der ältesten Einträge raus,
+    // sonst wächst die Map in einer warmen Instanz unbegrenzt.
+    if (cache.size > 400) {
+      const keys = Array.from(cache.keys()).slice(0, cache.size - 200);
+      for (const k of keys) cache.delete(k);
+    }
   }
-  return value;
+  return promise;
 }
 
 class SourceError extends Error {

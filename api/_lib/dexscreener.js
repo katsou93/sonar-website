@@ -19,7 +19,7 @@ const CURVE_DEXES = ["pumpfun", "pump", "moonshot", "believe", "boop", "launchla
 
 async function getPairsForToken(address) {
   return cached("ds:token:" + address, 15000, async () => {
-    const data = await getJson(BASE + "/latest/dex/tokens/" + address, { source: "dexscreener" });
+    const data = await getJson(BASE + "/latest/dex/tokens/" + address, { source: "dexscreener", timeoutMs: 5500, retries: 0 });
     const pairs = (data && data.pairs) || [];
     return pairs.filter((p) => p.chainId === "solana");
   });
@@ -33,7 +33,7 @@ async function getPairsForTokens(addresses) {
 
   const responses = await mapLimit(chunks, 3, async (chunk) => {
     try {
-      const data = await getJson(BASE + "/latest/dex/tokens/" + chunk.join(","), { source: "dexscreener" });
+      const data = await getJson(BASE + "/latest/dex/tokens/" + chunk.join(","), { source: "dexscreener", timeoutMs: 5500, retries: 0 });
       return (data && data.pairs) || [];
     } catch (err) {
       return [];
@@ -70,6 +70,19 @@ async function getBoosts(kind) {
   return cached("ds:boosts:" + k, 25000, async () => {
     const data = await getJson(BASE + "/token-boosts/" + k + "/v1", { source: "dexscreener" });
     return (Array.isArray(data) ? data : []).filter((p) => p.chainId === "solana");
+  });
+}
+
+/** Ein Handelspaar über seine Paar-Adresse holen - für DexScreener-Chart-Links. */
+async function getPairByAddress(pairAddress) {
+  return cached("ds:pair:" + pairAddress, 30000, async () => {
+    const data = await getJson(BASE + "/latest/dex/pairs/solana/" + pairAddress, {
+      source: "dexscreener",
+      timeoutMs: 5000,
+      retries: 0,
+    });
+    const pairs = (data && (data.pairs || (data.pair ? [data.pair] : []))) || [];
+    return pairs[0] || null;
   });
 }
 
@@ -157,6 +170,7 @@ function marketStats(pairs) {
 
 module.exports = {
   getPairsForToken,
+  getPairByAddress,
   getPairsForTokens,
   getLatestProfiles,
   getBoosts,

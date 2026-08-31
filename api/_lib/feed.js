@@ -62,7 +62,11 @@ function parseFilters(query) {
  * nachrechenbar - ein Wert, den man nicht erklären kann, hilft nicht.
  */
 function heatOf(item) {
-  const liq = item.liquidityUsd || 1;
+  // Ohne bekannte Liquidität gibt es keine sinnvolle Umschlagsrate. Früher
+  // stand hier "|| 1", wodurch ein Coin ohne Liquiditätsangabe auf das
+  // Fünfzigtausendfache der Hitze kam und die Standardsortierung anführte.
+  if (!item.liquidityUsd) return 0;
+  const liq = item.liquidityUsd;
   const turnover = item.volumeH1 / liq;
   const momentum = Math.max(0, item.priceChangeH1) / 100;
   const real = item.organicShareH1 == null ? 0.5 : Math.max(0.1, Math.min(1, item.organicShareH1 * 3));
@@ -134,19 +138,27 @@ function scoreItem(item) {
   });
 }
 
-/** DexScreener-Ergänzung: Coins, die in keiner Jupiter-Liste stehen. */
-async function dexExtras(known) {
+/**
+ * DexScreener-Kandidaten. Die drei Listen laufen PARALLEL zur
+ * Jupiter-Suche - vorher hingen sie dahinter und verdoppelten damit die
+ * Laufzeit der Funktion, was auf Vercel in einen Abbruch laufen kann.
+ */
+async function dexCandidates() {
   const settled = await Promise.allSettled([ds.getLatestProfiles(), ds.getBoosts("latest"), ds.getBoosts("top")]);
   const addresses = [];
   for (const res of settled) {
     if (res.status !== "fulfilled") continue;
     for (const entry of res.value) {
       const addr = entry && entry.tokenAddress;
-      if (addr && !known.has(addr) && addresses.indexOf(addr) === -1) addresses.push(addr);
+      if (addr && addresses.indexOf(addr) === -1) addresses.push(addr);
     }
   }
+  return addresses;
+}
+
+/** Für die Extra-Adressen die vollen Jupiter-Daten nachholen. */
+async function enrich(addresses) {
   if (!addresses.length) return [];
-  // Über Jupiter nachschlagen, damit alle Einträge dieselbe Datentiefe haben.
   try {
     const assets = await jup.byMints(addresses.slice(0, 100));
     return assets.map((a) => jup.normalize(a, null)).filter(Boolean);
@@ -159,7 +171,8 @@ async function buildFeed(query) {
   const filters = parseFilters(query);
   const warnings = [];
 
-  const discovered = await jup.discover();
+  // Beide Entdeckungswege gleichzeitig starten.
+  const [discovered, dexAddresses] = await Promise.all([jup.discover(), dexCandidates()]);
   const items = discovered.items.slice();
   const known = new Set(items.map((i) => i.address));
 
@@ -171,7 +184,7 @@ async function buildFeed(query) {
     );
   }
 
-  const extras = await dexExtras(known);
+  const extras = await enrich(dexAddresses.filter((a) => !known.has(a)));
   for (const extra of extras) {
     if (!known.has(extra.address)) {
       known.add(extra.address);
@@ -188,6 +201,10 @@ async function buildFeed(query) {
     if (!item.liquidityUsd && !item.volumeH1) continue;
     const result = scoreItem(item);
     const row = Object.assign({}, item, {
+      // Vorab-Bewertung: dem Radar fehlen Holder-Verteilung, LP-Sperre und
+      // die Rugcheck-Einzelrisiken. Der volle Scan kann deutlich strenger
+      // ausfallen - die Oberfläche weist das entsprechend aus.
+      preliminary: true,
       score: result.score,
       verdict: result.verdict,
       topFlags: result.flags.filter((f) => f.level === "red" || f.level === "yellow").slice(0, 3),
@@ -201,8 +218,15 @@ async function buildFeed(query) {
   const filtered = scored.filter((it) => {
     if ((it.liquidityUsd || 0) < filters.minLiquidityUsd) return false;
     if (it.volumeH1 < filters.minVolumeH1) return false;
+    // Unbekanntes Alter darf einen Altersfilter NICHT passieren. Sonst
+    // rutschen Coins ohne Zeitstempel durch das Preset "Früh dran" und
+    // lösen bei jedem Alarmlauf erneut eine Meldung aus.
+    if (filters.minAgeMinutes > 0 && it.ageMinutes == null) return false;
     if (it.ageMinutes != null && it.ageMinutes < filters.minAgeMinutes) return false;
-    if (filters.maxAgeMinutes != null && it.ageMinutes != null && it.ageMinutes > filters.maxAgeMinutes) return false;
+    if (filters.maxAgeMinutes != null) {
+      if (it.ageMinutes == null) return false;
+      if (it.ageMinutes > filters.maxAgeMinutes) return false;
+    }
     if (filters.requireSocials && !it.hasSocials) return false;
     if (filters.stage !== "any" && it.stage !== filters.stage) return false;
     if (it.score < filters.minScore) return false;

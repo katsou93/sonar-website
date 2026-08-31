@@ -1,13 +1,20 @@
 "use strict";
 /** Gemeinsame Antwort-Helfer: Header, optionaler Zugriffsschutz, Fehlerform. */
 
-function send(res, status, payload, cacheSeconds) {
+/**
+ * Antworten werden NICHT im Edge-Cache abgelegt.
+ *
+ * Vorher stand hier ein "public, s-maxage=25". Der Edge-Cache schlüsselt
+ * aber nur auf Pfad und Query - nicht auf den Passwort-Header. Damit hätte
+ * jeder ohne Passwort dieselbe Radar-URL abrufen und die zwischengespeicherte
+ * Antwort bekommen können, ohne dass die Prüfung je gelaufen wäre.
+ * Ein Cache, der die Zugangskontrolle umgeht, ist keine Optimierung.
+ */
+function send(res, status, payload) {
   res.setHeader("content-type", "application/json; charset=utf-8");
   res.setHeader("access-control-allow-origin", "*");
-  res.setHeader(
-    "cache-control",
-    cacheSeconds ? "public, s-maxage=" + cacheSeconds + ", stale-while-revalidate=" + cacheSeconds * 3 : "no-store",
-  );
+  res.setHeader("cache-control", "private, no-store");
+  res.setHeader("vary", "x-sonar-key");
   res.status(status).send(JSON.stringify(payload));
 }
 

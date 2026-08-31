@@ -13,25 +13,57 @@ const solana = require("./solana");
 const jup = require("./jupiter");
 const { evaluate, strategyFit } = require("./score");
 
-const BASE58 = /[1-9A-HJ-NP-Za-km-z]{32,44}/;
+const BASE58_ONLY = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
-/** Akzeptiert Adresse, pump.fun-Link, DexScreener-Link, Solscan-Link. */
+/**
+ * Akzeptiert Adresse, pump.fun-Link, DexScreener-Link, Solscan-Link.
+ *
+ * Wichtig: NUR der Pfad wird ausgewertet, niemals die Query. Eine
+ * DexScreener-URL trägt beim Klick auf einen Trader ein "?maker=<Wallet>"
+ * mit sich. Wer von hinten nach dem letzten Base58-String sucht, findet
+ * dann die Wallet des Traders und prüft anschliessend seelenruhig den
+ * falschen "Coin". Deshalb: Query und Fragment abschneiden, dann im Pfad
+ * das letzte Segment nehmen, das wie eine Adresse aussieht.
+ */
 function extractAddress(input) {
   if (!input) return null;
   const text = String(input).trim();
-  const direct = text.match(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/);
-  if (direct) return direct[0];
-  const parts = text.split(/[/?&=#\s]+/).filter(Boolean);
-  // Von hinten suchen: in URLs steht die Token-Adresse fast immer am Ende.
+  if (BASE58_ONLY.test(text)) return text;
+
+  const withoutQuery = text.split("?")[0].split("#")[0];
+  const parts = withoutQuery.split(/[/\s]+/).filter(Boolean);
   for (let i = parts.length - 1; i >= 0; i--) {
-    const m = parts[i].match(BASE58);
-    if (m && m[0].length >= 32) return m[0];
+    if (BASE58_ONLY.test(parts[i])) return parts[i];
   }
   return null;
 }
 
+/**
+ * Eine DexScreener-Chart-URL enthält die PAAR-Adresse, nicht den Mint.
+ * Findet DexScreener zur Adresse kein Handelspaar, in dem sie der
+ * Basis-Token ist, versuchen wir sie als Paar aufzulösen und nehmen den
+ * Basis-Token daraus. Erst wenn auch das nichts ergibt, ist die Eingabe
+ * wirklich unbrauchbar.
+ */
+async function resolveToMint(address) {
+  try {
+    const pairs = await ds.getPairsForToken(address);
+    if (pairs.some((p) => p.baseToken && p.baseToken.address === address)) return address;
+  } catch (err) {
+    return address;
+  }
+  try {
+    const viaPair = await ds.getPairByAddress(address);
+    if (viaPair && viaPair.baseToken && viaPair.baseToken.address) return viaPair.baseToken.address;
+  } catch (err) {
+    /* egal - dann bleibt es bei der Eingabe */
+  }
+  return address;
+}
+
 async function scan(rawInput) {
-  const address = extractAddress(rawInput);
+  const candidate = extractAddress(rawInput);
+  const address = candidate ? await resolveToMint(candidate) : null;
   if (!address) {
     const err = new Error("Keine gültige Solana-Token-Adresse erkannt.");
     err.code = "BAD_INPUT";
@@ -57,7 +89,7 @@ async function scan(rawInput) {
   if (settled[0].status === "rejected") warnings.push("DexScreener antwortet nicht - ohne Marktdaten ist der Check wertlos.");
   if (!rc) warnings.push("Rugcheck stumm (Rate-Limit oder Ausfall) - Contract-Zweitmeinung fehlt.");
   if (!j) warnings.push("Jupiter stumm - Holder-Zahl und die Bot-Volumen-Erkennung fehlen für diesen Coin.");
-  if (!dist && j && j.topHoldersPct == null) {
+  if (!dist && (!j || j.topHoldersPct == null)) {
     warnings.push("Holder-Verteilung nicht abrufbar - für exakte Werte einen eigenen RPC in SOLANA_RPC hinterlegen.");
   }
 
@@ -85,25 +117,13 @@ async function scan(rawInput) {
     source: [].concat(dist ? ["rpc"] : [], rc ? ["rugcheck"] : [], j ? ["jupiter"] : []),
   };
 
+  // Drei Zustände statt zwei. "Wir wissen es nicht" darf nie als
+  // "abgeschaltet" durchgehen - das ist die Frage, an der ein Rug hängt.
+  const auth = resolveAuthority(mintInfo, j, rc);
   const authorities = {
-    mintAuthority: mintInfo
-      ? mintInfo.mintAuthority
-      : j
-        ? j.mintAuthorityActive
-          ? "aktiv"
-          : null
-        : rc && rc.mintAuthority !== undefined
-          ? rc.mintAuthority
-          : null,
-    freezeAuthority: mintInfo
-      ? mintInfo.freezeAuthority
-      : j
-        ? j.freezeAuthorityActive
-          ? "aktiv"
-          : null
-        : rc && rc.freezeAuthority !== undefined
-          ? rc.freezeAuthority
-          : null,
+    mintAuthority: auth.mint,
+    freezeAuthority: auth.freeze,
+    authoritiesKnown: auth.known,
     lpLockedPct: rc ? rc.lpLockedPct : null,
   };
 
@@ -127,6 +147,7 @@ async function scan(rawInput) {
     ageMinutes: ageMinutes,
     organic: organic,
     isToken2022: j ? j.isToken2022 : false,
+    authoritiesKnown: auth.known,
     rugcheck: rc,
   };
 
@@ -163,6 +184,26 @@ async function scan(rawInput) {
     fetchedAt: new Date().toISOString(),
     warnings: warnings,
   };
+}
+
+/**
+ * Mint- und Freeze-Rechte aus der zuverlässigsten verfügbaren Quelle.
+ * `known` sagt, ob überhaupt eine Quelle geantwortet hat - ohne das
+ * würde eine stumme Kette als "alles sauber" durchgehen.
+ */
+function resolveAuthority(mintInfo, j, rc) {
+  if (mintInfo) return { mint: mintInfo.mintAuthority, freeze: mintInfo.freezeAuthority, known: true };
+  if (j && j.mintAuthorityActive !== null && j.freezeAuthorityActive !== null) {
+    return {
+      mint: j.mintAuthorityActive ? "aktiv" : null,
+      freeze: j.freezeAuthorityActive ? "aktiv" : null,
+      known: true,
+    };
+  }
+  if (rc && rc.mintAuthority !== undefined) {
+    return { mint: rc.mintAuthority, freeze: rc.freezeAuthority, known: true };
+  }
+  return { mint: null, freeze: null, known: false };
 }
 
 /** Rückfallebene, wenn DexScreener den Coin (noch) nicht kennt, Jupiter aber schon. */

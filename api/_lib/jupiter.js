@@ -32,7 +32,7 @@ const DATAPI = "https://datapi.jup.ag/v1";
 /** Jede Liste ist bei 30 Einträgen gedeckelt - deshalb fragen wir viele. */
 async function list(path, ttlMs) {
   return cached("jup:" + path, ttlMs || 20000, async () => {
-    const data = await getJson(LITE + path, { source: "jupiter", timeoutMs: 9000, retries: 0 });
+    const data = await getJson(LITE + path, { source: "jupiter", timeoutMs: 5500, retries: 0 });
     return Array.isArray(data) ? data : [];
   });
 }
@@ -48,16 +48,22 @@ async function byMints(mints) {
   return cached("jup:mints:" + ids, 20000, async () => {
     const data = await getJson(LITE + "/search?query=" + encodeURIComponent(ids), {
       source: "jupiter",
-      timeoutMs: 9000,
+      timeoutMs: 5500,
       retries: 0,
     });
     return Array.isArray(data) ? data : [];
   });
 }
 
+/**
+ * NUR exakte Treffer. Jupiters /search sucht auch über Namen und Symbole -
+ * ein "nimm halt den ersten Treffer"-Fallback würde die Zahlen eines
+ * fremden Coins unter der angefragten Adresse anzeigen. Das ist der
+ * gefährlichste Fehler, den dieses Werkzeug machen könnte.
+ */
 async function byMint(mint) {
   const hits = await byMints([mint]);
-  return hits.find((t) => t && t.id === mint) || hits[0] || null;
+  return hits.find((t) => t && t.id === mint) || null;
 }
 
 /**
@@ -72,7 +78,7 @@ async function pools(sortBy) {
     try {
       const data = await getJson(DATAPI + "/pools?sortBy=" + encodeURIComponent(key) + "&limit=50", {
         source: "jupiter-datapi",
-        timeoutMs: 9000,
+        timeoutMs: 5500,
         retries: 0,
       });
       return (data && Array.isArray(data.pools) ? data.pools : []).filter((p) => p && p.baseAsset);
@@ -147,8 +153,10 @@ function normalize(asset, pool) {
     devAddress: asset.dev || null,
     // Jupiter meldet "disabled: true" - wir drehen das auf unsere Logik
     // (eine gesetzte Authority ist das Problem, nicht ihr Fehlen).
-    mintAuthorityActive: audit.mintAuthorityDisabled === false,
-    freezeAuthorityActive: audit.freezeAuthorityDisabled === false,
+    // Drei Zustände, nicht zwei: fehlt das Feld, ist es NICHT "sicher",
+    // sondern unbekannt. Unbekannt als grün anzuzeigen wäre eine Lüge.
+    mintAuthorityActive: typeof audit.mintAuthorityDisabled === "boolean" ? !audit.mintAuthorityDisabled : null,
+    freezeAuthorityActive: typeof audit.freezeAuthorityDisabled === "boolean" ? !audit.freezeAuthorityDisabled : null,
     devMigrations: typeof audit.devMigrations === "number" ? audit.devMigrations : null,
     devMints: typeof audit.devMints === "number" ? audit.devMints : null,
 
@@ -181,8 +189,12 @@ async function discover() {
     ["traded-24h", topTraded("24h")],
   ];
 
-  const settled = await Promise.allSettled(jobs.map((j) => j[1]));
-  const poolResults = await Promise.allSettled([pools("listedTime"), pools("volume24h")]);
+  // Alles in EINEM Durchgang - die Pool-Abfragen hingen vorher hinter den
+  // neun Listen und verdoppelten damit das Zeitbudget der Funktion.
+  const poolJobs = [pools("listedTime"), pools("volume24h")];
+  const all = await Promise.allSettled(jobs.map((j) => j[1]).concat(poolJobs));
+  const settled = all.slice(0, jobs.length);
+  const poolResults = all.slice(jobs.length);
 
   const byAddress = new Map();
   const sourceCounts = {};

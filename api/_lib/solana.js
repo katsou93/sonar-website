@@ -15,7 +15,7 @@
  * SOLANA_RPC macht diesen Teil zuverlässig.
  */
 
-const { postJson } = require("./http");
+const { postJson, cached } = require("./http");
 
 const RPC = process.env.SOLANA_RPC || "https://api.mainnet-beta.solana.com";
 
@@ -46,7 +46,7 @@ let requestId = 0;
 
 async function rpc(method, params, timeoutMs) {
   const body = { jsonrpc: "2.0", id: ++requestId, method: method, params: params };
-  const res = await postJson(RPC, body, { source: "solana-rpc", timeoutMs: timeoutMs || 9000 });
+  const res = await postJson(RPC, body, { source: "solana-rpc", timeoutMs: timeoutMs || 4000 });
   if (res && res.error) {
     const err = new Error(res.error.message || "RPC-Fehler");
     err.source = "solana-rpc";
@@ -57,13 +57,17 @@ async function rpc(method, params, timeoutMs) {
 
 async function rpcBatch(calls, timeoutMs) {
   const body = calls.map((c) => ({ jsonrpc: "2.0", id: ++requestId, method: c.method, params: c.params }));
-  const res = await postJson(RPC, body, { source: "solana-rpc", timeoutMs: timeoutMs || 12000 });
+  const res = await postJson(RPC, body, { source: "solana-rpc", timeoutMs: timeoutMs || 5000 });
   const list = Array.isArray(res) ? res : [res];
   return list.map((r) => (r && r.result) || null);
 }
 
 /** Mint-Daten: Authorities, Decimals, Gesamtmenge. */
 async function getMintInfo(mint) {
+  return cached("rpc:mint:" + mint, 30000, () => loadMintInfo(mint));
+}
+
+async function loadMintInfo(mint) {
   const result = await rpc("getAccountInfo", [mint, { encoding: "jsonParsed" }]);
   const info = result && result.value && result.value.data && result.value.data.parsed
     ? result.value.data.parsed.info
@@ -82,12 +86,15 @@ async function getMintInfo(mint) {
  * Gibt Prozentwerte bezogen auf den VERTEILBAREN Supply zurück
  * (Gesamtmenge minus alles, was in Pools/Kurven liegt).
  */
-async function getHolderDistribution(mint) {
+async function getHolderDistribution(mint, knownMintInfo) {
   const largest = await rpc("getTokenLargestAccounts", [mint]);
   const accounts = (largest && largest.value) || [];
   if (!accounts.length) return null;
 
-  const mintInfo = await getMintInfo(mint);
+  // Der Aufrufer hat die Mint-Daten meist schon parallel geholt - ein
+  // zweiter identischer Request gegen den gedrosselten öffentlichen
+  // Endpunkt kostet nur Zeit und Rate-Limit.
+  const mintInfo = knownMintInfo || (await getMintInfo(mint));
   const totalSupply = mintInfo ? mintInfo.supply : null;
 
   // Schritt 1: Token-Konto -> Besitzer
@@ -131,7 +138,21 @@ async function getHolderDistribution(mint) {
   });
 
   if (!totalSupply) return null;
-  const distributable = Math.max(totalSupply - poolHeld, 1e-9);
+
+  // Zwei Fälle, in denen wir NICHTS wissen und das auch sagen müssen:
+  //
+  // 1. Alle zwanzig grössten Konten gehören Pools. Bei frischen Coins ist
+  //    das normal - dann liegt der Streubesitz komplett unterhalb der
+  //    Grenze, die der RPC zurückgibt. Früher kam hier 0% heraus, und
+  //    0% liest sich wie "perfekt gestreut". Genau falsch herum.
+  // 2. Der Pool hält rechnerisch (fast) alles, der Nenner geht gegen null
+  //    und jede Prozentangabe wird Unsinn.
+  //
+  // In beiden Fällen ist null die ehrliche Antwort; die Bewertung zieht
+  // dafür Punkte ab, statt Sicherheit vorzutäuschen.
+  if (!holders.length) return null;
+  const distributable = totalSupply - poolHeld;
+  if (!(distributable > totalSupply * 0.0005)) return null;
 
   holders.sort((a, b) => b.amount - a.amount);
   const top10 = holders.slice(0, 10).reduce((s, h) => s + h.amount, 0);
