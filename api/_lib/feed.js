@@ -20,6 +20,7 @@
 
 const jup = require("./jupiter");
 const ds = require("./dexscreener");
+const narrative = require("./narrative");
 const { evaluate } = require("./score");
 
 const DEFAULT_FILTERS = {
@@ -32,6 +33,7 @@ const DEFAULT_FILTERS = {
   requireSocials: false,
   stage: "any",
   minScore: 0,
+  sector: "",
   sort: "heat",
   limit: 60,
 };
@@ -53,7 +55,8 @@ function parseFilters(query) {
     requireSocials: q.socials === "1" || q.socials === "true",
     stage: ["any", "graduated", "bonding_curve"].indexOf(q.stage) !== -1 ? q.stage : "any",
     minScore: num(q.minScore, DEFAULT_FILTERS.minScore),
-    sort: ["heat", "new", "volume", "score", "organic", "holders", "early", "surge"].indexOf(q.sort) !== -1 ? q.sort : DEFAULT_FILTERS.sort,
+    sector: typeof q.sector === "string" && /^[a-z]{2,20}$/.test(q.sector) ? q.sector : DEFAULT_FILTERS.sector,
+    sort: ["heat", "new", "volume", "score", "organic", "holders", "early", "surge", "sector"].indexOf(q.sort) !== -1 ? q.sort : DEFAULT_FILTERS.sort,
     limit: Math.min(200, Math.max(1, num(q.limit, DEFAULT_FILTERS.limit))),
   };
 }
@@ -311,6 +314,12 @@ async function buildFeed(query) {
     scored.push(row);
   }
 
+  // Themen vermessen, BEVOR die Filter greifen. Die Hitze einer Ecke ist
+  // eine Aussage ueber den Markt, nicht ueber die aktuelle Filtereinstellung -
+  // sonst waere "Katzen laufen" plötzlich davon abhaengig, welchen
+  // Mindest-Marktwert der Nutzer gerade eingestellt hat.
+  const themes = narrative.measure(scored);
+
   const filtered = scored.filter((it) => {
     if ((it.marketCap || 0) < filters.minMarketCapUsd) return false;
     if ((it.liquidityUsd || 0) < filters.minLiquidityUsd) return false;
@@ -324,6 +333,7 @@ async function buildFeed(query) {
       if (it.ageMinutes == null) return false;
       if (it.ageMinutes > filters.maxAgeMinutes) return false;
     }
+    if (filters.sector && it.sector !== filters.sector) return false;
     if (filters.requireSocials && !it.hasSocials) return false;
     if (filters.stage !== "any" && it.stage !== filters.stage) return false;
     if (it.score < filters.minScore) return false;
@@ -339,11 +349,17 @@ async function buildFeed(query) {
     if (filters.sort === "holders") return (b.holderCount || 0) - (a.holderCount || 0);
     if (filters.sort === "early") return b.early - a.early;
     if (filters.sort === "surge") return b.surge - a.surge;
+    if (filters.sort === "sector") {
+      const diff = (b.sectorHeat || 0) - (a.sectorHeat || 0);
+      if (diff !== 0) return diff;
+      return b.surge - a.surge;
+    }
     return b.heat - a.heat;
   });
 
   return {
     items: filtered.slice(0, filters.limit),
+    sectors: themes.sectors.slice(0, 8),
     filters: filters,
     warnings: warnings,
     scanned: scored.length,
