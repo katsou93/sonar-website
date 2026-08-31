@@ -54,7 +54,13 @@ function dexPayload(overrides) {
 }
 
 function rpcPayload(method) {
+  if (method === "getAccountInfo" && scenario === "no-authority-data") {
+    return { result: { value: null } };
+  }
   if (method === "getTokenLargestAccounts") {
+    if (scenario === "only-pools") {
+      return { result: { value: [{ address: "TokenAccCurve", uiAmount: 1000000000 }] } };
+    }
     return {
       result: {
         value: [
@@ -88,6 +94,10 @@ function rpcPayload(method) {
 
 function multiplePayload(params) {
   const addresses = params[0];
+  if (scenario === "only-pools") {
+    if (addresses[0] === "TokenAccCurve") return { result: { value: [{ data: { parsed: { info: { owner: CURVE_OWNER } } } }] } };
+    return { result: { value: addresses.map(() => ({ owner: PUMP_PROGRAM })) } };
+  }
   // Erster Aufruf: Token-Konten -> Besitzer
   if (addresses[0] === "TokenAccCurve") {
     return {
@@ -157,11 +167,22 @@ function jupAsset(over) {
 function jupList(count, prefix) {
   const out = [];
   for (let i = 0; i < count; i++) {
+    const base = jupAsset();
+    // Bewusst UNTERSCHIEDLICHE Werte: mit lauter gleichen Zahlen wäre jede
+    // Sortier-Assertion automatisch wahr und der Test wertlos.
+    const organic = 1000 + i * 700;
     out.push(
       jupAsset({
         id: prefix + String(i).padStart(4, "0") + "1".repeat(34),
         symbol: prefix + i,
         name: prefix + " " + i,
+        holderCount: 100 + i * 37,
+        liquidity: 20000 + i * 1500,
+        stats1h: Object.assign({}, base.stats1h, {
+          buyOrganicVolume: organic,
+          sellOrganicVolume: organic,
+          holderChange: i,
+        }),
       }),
     );
   }
@@ -179,6 +200,12 @@ global.fetch = function (url, options) {
     if (href.indexOf("/search?query=") !== -1) {
       const ids = decodeURIComponent(href.split("query=")[1] || "").split(",");
       if (scenario === "wash") return jsonResponse([jupAsset({ stats1h: Object.assign(jupAsset().stats1h, { buyOrganicVolume: 200, sellOrganicVolume: 150 }) })]);
+      // Jupiter sucht auch ueber Namen: ein Treffer mit ANDERER id darf nie
+      // als Antwort auf die angefragte Adresse durchgehen.
+      if (scenario === "jupiter-wrong-token")
+        return jsonResponse([jupAsset({ id: "FREMD" + "1".repeat(38), symbol: "FREMD", name: "Ganz anderer Coin" })]);
+      if (scenario === "no-authority-data")
+        return jsonResponse(ids.map((id) => jupAsset({ id: id, audit: { topHoldersPercentage: 17.2 } })));
       return jsonResponse(ids.map((id) => jupAsset({ id: id })));
     }
     if (href.indexOf("/recent") !== -1) return jsonResponse(jupList(20, "R"));
@@ -200,6 +227,7 @@ global.fetch = function (url, options) {
     return jsonResponse([]);
   }
   if (href.indexOf("rugcheck.xyz") !== -1) {
+    if (scenario === "no-authority-data") return Promise.resolve({ ok: false, status: 503, json: () => Promise.resolve({}) });
     return jsonResponse({
       score_normalised: 12,
       risks: [{ name: "Mutable metadata", description: "Name und Bild können geändert werden", level: "warn", score: 100 }],
@@ -355,6 +383,62 @@ async function main() {
     const still = await scan(MINT);
     assert.strictEqual(still.sources.jupiter, false);
     assert.ok(still.score >= 0);
+  });
+
+  console.log("\nRegressionen aus dem Code-Review");
+
+  await check("DexScreener-Link mit ?maker= liefert NICHT die Wallet", () => {
+    const maker = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM";
+    const mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    assert.strictEqual(extractAddress("https://dexscreener.com/solana/" + mint + "?maker=" + maker), mint);
+  });
+  await check("Fragment und Query werden ignoriert", () => {
+    const mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    assert.strictEqual(extractAddress("https://pump.fun/coin/" + mint + "#chart"), mint);
+  });
+
+  await check("kein Bericht mit den Daten eines fremden Coins", async () => {
+    setScenario("jupiter-wrong-token");
+    const r = await scan(MINT);
+    // Jupiter liefert hier absichtlich einen anderen Token. Der Bericht darf
+    // dessen Zahlen nicht übernehmen.
+    assert.notStrictEqual(r.symbol, "FREMD", "fremdes Symbol im Bericht");
+    assert.strictEqual(r.sources.jupiter, false, "fremder Treffer wurde als Jupiter-Quelle gezählt");
+  });
+
+  await check("alle Top-Konten sind Pools => Verteilung unbekannt, nicht 0%", async () => {
+    setScenario("only-pools");
+    const r = await scan(MINT);
+    assert.strictEqual(r.holders.top10Pct, null, "top10Pct=" + r.holders.top10Pct);
+    assert.strictEqual(r.holders.topHolderPct, null);
+    assert.ok(!r.flags.some((f) => f.id === "top10_ok"), "meldet faelschlich breite Verteilung");
+  });
+
+  await check("unbekannte Contract-Rechte werden bestraft, nicht als sicher gewertet", async () => {
+    setScenario("no-authority-data");
+    const r = await scan(MINT);
+    assert.strictEqual(r.authorities.authoritiesKnown, false);
+    assert.ok(r.flags.some((f) => f.id === "authorities_unknown"), "kein Flag fuer unbekannte Rechte");
+    assert.ok(r.score < 100);
+  });
+
+  setScenario("healthy");
+  await check("Coins ohne Alter passieren keinen Altersfilter", async () => {
+    const f = await buildFeed({ minLiquidity: 0, minVolumeH1: 0, minAge: 0, maxAge: 240, limit: 200 });
+    assert.ok(f.items.every((i) => i.ageMinutes != null), "Eintrag ohne Alter durchgelassen");
+  });
+
+  await check("Sortierung nach echtem Volumen ist echt sortiert", async () => {
+    const f = await buildFeed({ minLiquidity: 0, minVolumeH1: 0, minAge: 0, sort: "organic", limit: 200 });
+    const shares = f.items.map((i) => i.organicShareH1 || 0);
+    assert.ok(new Set(shares).size > 3, "Fixtures haben zu wenig Varianz - Test waere gehaltlos");
+    for (let i = 1; i < shares.length; i++) assert.ok(shares[i - 1] >= shares[i], "nicht absteigend");
+  });
+
+  await check("Coins ohne Liquiditaet dominieren die Hitze nicht", async () => {
+    const f = await buildFeed({ minLiquidity: 0, minVolumeH1: 0, minAge: 0, sort: "heat", limit: 200 });
+    const top = f.items[0];
+    assert.ok(!top || top.liquidityUsd, "Eintrag ohne Liquiditaet steht ganz oben");
   });
 
   console.log(failures === 0 ? "\nAlle Tests bestanden.\n" : "\n" + failures + " Test(s) fehlgeschlagen.\n");
