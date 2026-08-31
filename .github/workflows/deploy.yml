@@ -1,8 +1,11 @@
 name: Deploy to GitHub Pages
 
+# ACHTUNG: GitHub Pages liefert nur statische Dateien - dort gibt es die
+# Functions unter /api/ nicht. Eine dort veröffentlichte Kopie sieht
+# funktionsfähig aus, kann sich aber nicht einmal anmelden. Deshalb läuft
+# dieser Job nicht mehr automatisch bei jedem Push. Die echte Adresse ist
+# die Vercel-URL.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
