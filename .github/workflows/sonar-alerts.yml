@@ -28,9 +28,13 @@ jobs:
           SECRET: ${{ secrets.SONAR_CRON_SECRET }}
           DRY: ${{ github.event.inputs.dry || '0' }}
         run: |
+          # Solange die Secrets nicht gesetzt sind, sauber aussteigen statt
+          # fehlzuschlagen - sonst schickt GitHub alle 10 Minuten eine
+          # Fehlermail, und das ist die schnellste Art, eine Automatisierung
+          # wieder abzuschalten.
           if [ -z "$SECRET" ]; then
-            echo "::error::Repository-Secret SONAR_CRON_SECRET fehlt."
-            exit 1
+            echo "::notice::SONAR_CRON_SECRET ist noch nicht gesetzt - Alerts sind inaktiv. Anleitung steht in der README."
+            exit 0
           fi
           response=$(curl -sS --max-time 60 -w "\n%{http_code}" \
             "$BASE/api/alerts?secret=$SECRET&window=12&dry=$DRY")
