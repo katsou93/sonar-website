@@ -154,6 +154,33 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
   background-size:200% 100%;animation:sh 1.3s infinite;margin-bottom:8px}
 @keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
 
+/* ---------- Jetzt-Ansicht ---------- */
+.sliders{display:flex;gap:26px;flex-wrap:wrap;align-items:center;padding:16px 18px;background:var(--panel);
+  border:1px solid var(--border);border-radius:14px;margin-bottom:18px}
+.sld{display:flex;flex-direction:column;gap:7px;min-width:210px;flex:1}
+.sld label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--mu2);display:flex;justify-content:space-between;gap:10px}
+.sld label b{color:var(--grn);font-family:var(--mono);font-size:12.5px;text-transform:none;letter-spacing:0}
+.sld input[type=range]{width:100%;accent-color:var(--grn);cursor:pointer}
+.cards{display:grid;gap:14px}
+.bigcard{background:var(--panel);border:1px solid var(--border2);border-radius:16px;padding:22px;display:grid;
+  grid-template-columns:auto 1fr auto;gap:18px;align-items:start;transition:.15s;cursor:pointer}
+.bigcard:hover{border-color:rgba(20,241,149,.35);background:#12131c}
+.bigcard.rank1{border-color:rgba(20,241,149,.4);background:linear-gradient(180deg,rgba(20,241,149,.05),transparent 60%),var(--panel)}
+.rank{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font-family:var(--mono);font-weight:700;
+  font-size:14px;background:rgba(255,255,255,.06);color:var(--mu)}
+.bigcard.rank1 .rank{background:rgba(20,241,149,.16);color:var(--grn)}
+.bighead{display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap}
+.bighead .sym{font-size:21px;font-weight:750;letter-spacing:-.02em}
+.bighead .nm{font-size:13.5px;color:var(--mu2)}
+.headline{font-size:15.5px;line-height:1.55;margin-bottom:14px;color:var(--tx)}
+.headline b{color:var(--grn);font-weight:650}
+.against{font-size:13px;color:var(--yel);line-height:1.55;margin-bottom:14px;display:flex;gap:8px}
+.against span{color:var(--mu)}
+.kpis{display:flex;gap:26px;flex-wrap:wrap;margin-bottom:16px}
+.kpi b{display:block;font-family:var(--mono);font-size:17px;font-weight:650;letter-spacing:-.01em}
+.kpi span{font-size:10.5px;color:var(--mu2);text-transform:uppercase;letter-spacing:.07em}
+.bigright{display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+@media(max-width:760px){.bigcard{grid-template-columns:auto 1fr;}.bigright{grid-column:1/-1;align-items:flex-start;flex-direction:row}}
 .autolabel{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--mu);cursor:pointer;user-select:none}
 .autolabel input{accent-color:var(--grn);cursor:pointer}
 .statbar{display:flex;gap:18px;flex-wrap:wrap;align-items:baseline;padding:0 2px 12px;font-size:12.5px;color:var(--mu2)}
@@ -208,7 +235,8 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
       SONAR
     </a>
     <div class="tabs">
-      <button class="tab on" data-view="scanner">Scanner</button>
+      <button class="tab on" data-view="jetzt">Jetzt</button>
+      <button class="tab" data-view="scanner">Scanner</button>
       <button class="tab" data-view="radar">Radar</button>
       <button class="tab" data-view="watchlist">Watchlist</button>
       <button class="tab" data-view="regeln">Regeln</button>
@@ -220,8 +248,33 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
 
 <main class="wrap">
 
+  <!-- ============ JETZT ============ -->
+  <section class="view on" id="view-jetzt">
+    <div class="filters">
+      <button class="preset" data-og="gross">Große Namen</button>
+      <button class="preset on" data-og="etabliert">Etabliert</button>
+      <button class="preset" data-og="alles">Alles ab 1 Tag</button>
+      <div class="hspace" style="flex:1"></div>
+      <label class="autolabel"><input type="checkbox" id="j-auto"> alle 30 s</label>
+      <button class="btn btn-g btn-sm" id="j-reload">Aktualisieren</button>
+    </div>
+    <div class="sliders">
+      <div class="sld">
+        <label>Mindestgröße <b id="j-mcap-val">200k</b></label>
+        <input type="range" id="j-mcap" min="0" max="10" step="1" value="3">
+      </div>
+      <div class="sld">
+        <label>Mindestalter <b id="j-age-val">1 Tag</b></label>
+        <input type="range" id="j-age" min="0" max="8" step="1" value="3">
+      </div>
+    </div>
+    <div id="j-stats"></div>
+    <div id="j-out"></div>
+    <p class="hint" style="margin-top:18px">Gezeigt wird, wo gerade etwas <b style="color:var(--mu)">Ungewöhnliches für diesen Coin</b> passiert — Umsatz gemessen am eigenen Schnitt, nicht an absoluten Zahlen. Das ist keine Kaufempfehlung und keine Vorhersage: es ist der Hinweis, wo du hinschauen solltest.</p>
+  </section>
+
   <!-- ============ SCANNER ============ -->
-  <section class="view on" id="view-scanner">
+  <section class="view" id="view-scanner">
     <div class="searchrow">
       <input id="q" placeholder="Token-Adresse oder pump.fun-/DexScreener-Link einfügen" spellcheck="false" autocomplete="off">
       <button class="btn btn-p" id="scanbtn">Prüfen</button>
@@ -315,6 +368,7 @@ function lockOut(){
 function unlock(){
   document.getElementById("gate").classList.add("hide");
   document.getElementById("app").classList.add("show");
+  if(!jetztLoaded){ jetztLoaded = true; loadJetzt(); }
   var params = new URLSearchParams(location.search);
   if(params.get("address")) scan(params.get("address"));
   var h = location.hash.replace("#","");
@@ -378,6 +432,7 @@ for(var i=0;i<tabs.length;i++){
     var v = this.getAttribute("data-view");
     document.querySelectorAll(".tab").forEach(function(t){ t.classList.toggle("on", t===this); }, this);
     document.querySelectorAll(".view").forEach(function(s){ s.classList.toggle("on", s.id==="view-"+v); });
+    if(v==="jetzt" && !jetztLoaded){ jetztLoaded = true; loadJetzt(); }
     if(v==="radar" && !radarLoaded) loadRadar();
     if(v==="watchlist" && !this.classList.contains("was-on")) renderWatchlist();
     document.querySelectorAll(".tab").forEach(function(t){ t.classList.remove("was-on"); });
@@ -385,6 +440,143 @@ for(var i=0;i<tabs.length;i++){
     location.hash = v;
   });
 }
+
+/* ---------- Jetzt: die drei Karten ---------- */
+
+// Schieberegler-Stufen. Bewusst grob: es geht um Groessenordnungen,
+// nicht um Feinjustage.
+var MCAP_STEPS = [0, 25000, 100000, 200000, 500000, 1000000, 2000000, 5000000, 10000000, 25000000, 100000000];
+var MCAP_LABEL = ["egal","25k","100k","200k","500k","1M","2M","5M","10M","25M","100M"];
+var AGE_STEPS  = [0, 60, 180, 1440, 4320, 10080, 20160, 43200, 129600];
+var AGE_LABEL  = ["egal","1 Std","3 Std","1 Tag","3 Tage","1 Woche","2 Wochen","1 Monat","3 Monate"];
+
+var OG_PRESETS = {
+  gross:      { mcap: 7, age: 5 },   // ab 5M, ab 1 Woche
+  etabliert:  { mcap: 3, age: 3 },   // ab 200k, ab 1 Tag
+  alles:      { mcap: 0, age: 3 }    // ab 1 Tag
+};
+
+var jAutoTimer = null;
+
+function jLabels(){
+  el("j-mcap-val").textContent = MCAP_LABEL[+el("j-mcap").value];
+  el("j-age-val").textContent  = AGE_LABEL[+el("j-age").value];
+}
+
+function loadJetzt(){
+  jLabels();
+  var out = el("j-out");
+  if(!out.querySelector(".bigcard")) out.innerHTML = '<div class="skel" style="height:150px"></div><div class="skel" style="height:150px"></div>';
+  var mcap = MCAP_STEPS[+el("j-mcap").value];
+  var age  = AGE_STEPS[+el("j-age").value];
+  var qs = "sort=surge&limit=12&minMcap="+mcap+"&minAge="+age+"&minLiquidity="+Math.max(3000, Math.round(mcap/50))+"&minVolumeH1=500";
+  apiFetch("/api/feed?"+qs)
+    .then(function(j){
+      if(!j.ok){ out.innerHTML='<div class="err">'+esc(j.error)+'</div>'; return; }
+      var hits = j.items.filter(function(i){ return i.surge > 0; }).slice(0,3);
+      el("j-stats").innerHTML = '<div class="statbar"><span><b>'+j.scanned+'</b> Coins beobachtet</span>'+
+        '<span><b>'+j.matched+'</b> in deiner Größenklasse</span>'+
+        '<span class="live"><span style="width:6px;height:6px;border-radius:50%;background:var(--grn);display:inline-block"></span>gerade eben</span></div>';
+      if(!hits.length){
+        out.innerHTML = '<div class="empty">In dieser Größenklasse bewegt sich gerade nichts Auffälliges.<br>'+
+          '<span class="mu2">Das ist ein gültiges Ergebnis, kein Fehler — meistens passiert nämlich nichts. Regler weiter aufmachen oder in ein paar Minuten nochmal.</span></div>';
+        return;
+      }
+      out.innerHTML = '<div class="cards">'+hits.map(bigCard).join("")+'</div>';
+      document.querySelectorAll("#j-out .bigcard").forEach(function(c){
+        c.addEventListener("click", function(e){
+          if(e.target.closest("a")) return;
+          document.querySelector('.tab[data-view="scanner"]').click();
+          window.scrollTo(0,0);
+          scan(c.getAttribute("data-addr"));
+        });
+      });
+    })
+    .catch(function(e){ if(e && e.locked) return; out.innerHTML='<div class="err">Netzwerkfehler: '+esc(e.message)+'</div>'; });
+}
+
+/** Ein Satz in Klartext: was ist hier gerade ungewoehnlich? */
+function headlineFor(it){
+  var parts = [];
+  var x = it.volumeSurge;
+  if(x >= 1.2) parts.push("Der Umsatz liegt gerade <b>"+(x>=10?Math.round(x):x.toFixed(1))+"× über dem eigenen Tagesschnitt</b>");
+  var org = it.organicShareH1 == null ? null : Math.round(it.organicShareH1*100);
+  if(org != null && org >= 20) parts.push("und <b>"+org+"% davon sind echte Trades</b> statt Bot-Handel");
+  else if(org != null) parts.push("davon sind allerdings nur <b style=\"color:var(--yel)\">"+org+"%</b> echte Trades");
+  if((it.holderChangeH1||0) >= 8) parts.push("die Holder-Zahl wächst um <b>"+Math.round(it.holderChangeH1)+"%</b> in der Stunde");
+  return parts.join(", ") + ".";
+}
+
+/** Und was dagegen spricht - immer sichtbar, nie versteckt. */
+function againstFor(it){
+  var w = [];
+  var move = it.priceChangeH1 || 0;
+  if(move > 150) w.push("Kurs schon +"+Math.round(move)+"% in einer Stunde — der Zug ist gefahren, du wärst spät dran");
+  else if(move > 60) w.push("Kurs bereits +"+Math.round(move)+"% gelaufen");
+  if(it.organicShareH1 != null && it.organicShareH1 < 0.1) w.push("wenig echtes Volumen ("+(it.organicShareH1*100).toFixed(1)+"%), der Rest sind Bots");
+  if(it.buySellRatioH1 != null && it.buySellRatioH1 < 1) w.push("mehr Verkäufe als Käufe");
+  (it.topFlags||[]).forEach(function(f){ if(f.level==="red") w.push(f.title); });
+  if(it.liquidityUsd && it.liquidityUsd < 25000) w.push("flacher Pool ("+money(it.liquidityUsd)+") — nur kleine Positionen");
+  if(!w.length) return "";
+  return '<div class="against">⚠ <span>'+esc(w.slice(0,3).join(" · "))+'</span></div>';
+}
+
+function bigCard(it, i){
+  var org = it.organicShareH1 == null ? "—" : Math.round(it.organicShareH1*100)+"%";
+  var kpis = [
+    ["Umsatzsprung", (it.volumeSurge>=10?Math.round(it.volumeSurge):it.volumeSurge.toFixed(1))+"×"],
+    ["Echtes Volumen", org],
+    ["Holder 1h", (it.holderChangeH1==null?"—":(it.holderChangeH1>=0?"+":"")+Math.round(it.holderChangeH1)+"%")],
+    ["Kurs 1h", pctTxt(it.priceChangeH1,0)],
+    ["Marktkapital.", money(it.marketCap)],
+    ["Alter", age(it.ageMinutes)]
+  ].map(function(k){ return '<div class="kpi"><b>'+k[1]+'</b><span>'+k[0]+'</span></div>'; }).join("");
+
+  return '<div class="bigcard'+(i===0?" rank1":"")+'" data-addr="'+esc(it.address)+'">'+
+    '<div class="rank">'+(i+1)+'</div>'+
+    '<div style="min-width:0">'+
+      '<div class="bighead">'+avatar(it.imageUrl,it.symbol,"av")+
+        '<span class="sym">'+esc(it.symbol||"?")+'</span>'+
+        '<span class="nm">'+esc(it.name||"")+'</span>'+
+        (it.stage==="graduated"?'<span class="badge b-g">migriert</span>':'<span class="badge b-y">Kurve</span>')+
+        '<span class="scorepill '+scoreColor(it.score,it.verdict)+'">'+it.score+'</span>'+
+      '</div>'+
+      '<div class="headline">'+headlineFor(it)+'</div>'+
+      againstFor(it)+
+      '<div class="kpis">'+kpis+'</div>'+
+      '<div class="linkrow" style="margin:0">'+
+        '<a class="btn btn-g btn-sm" target="_blank" rel="noopener" href="https://pump.fun/coin/'+esc(it.address)+'">pump.fun</a>'+
+        (safeUrl(it.dexUrl)?'<a class="btn btn-g btn-sm" target="_blank" rel="noopener" href="'+esc(safeUrl(it.dexUrl))+'">Chart</a>':'')+
+        '<span class="btn btn-p btn-sm">Voller Check →</span>'+
+      '</div>'+
+    '</div>'+
+    '<div class="bigright"></div>'+
+  '</div>';
+}
+
+document.querySelectorAll(".preset[data-og]").forEach(function(b){
+  b.addEventListener("click", function(){
+    document.querySelectorAll(".preset[data-og]").forEach(function(x){ x.classList.remove("on"); });
+    b.classList.add("on");
+    var p = OG_PRESETS[b.getAttribute("data-og")];
+    el("j-mcap").value = p.mcap; el("j-age").value = p.age;
+    loadJetzt();
+  });
+});
+["j-mcap","j-age"].forEach(function(id){
+  el(id).addEventListener("input", jLabels);
+  el(id).addEventListener("change", function(){
+    document.querySelectorAll(".preset[data-og]").forEach(function(x){ x.classList.remove("on"); });
+    loadJetzt();
+  });
+});
+el("j-reload").addEventListener("click", loadJetzt);
+el("j-auto").addEventListener("change", function(){
+  if(jAutoTimer){ clearInterval(jAutoTimer); jAutoTimer = null; }
+  if(this.checked) jAutoTimer = setInterval(function(){
+    if(el("view-jetzt").classList.contains("on")) loadJetzt();
+  }, 30000);
+});
 
 /* ---------- scanner ---------- */
 var scanOut = el("scanout");
@@ -525,6 +717,7 @@ el("q").addEventListener("keydown", function(e){ if(e.key==="Enter") scan(this.v
 
 /* ---------- radar ---------- */
 var radarLoaded = false;
+var jetztLoaded = false;
 var PRESETS = {
   a:    { liq:30000, vol:10000, org:15, minage:1440, maxage:"",  score:70, stage:"graduated", sort:"score"   },
   b:    { liq:4000,  vol:2000,  org:5,  minage:3,    maxage:720, score:45, stage:"any",       sort:"heat"    },
