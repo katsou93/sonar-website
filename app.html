@@ -86,6 +86,8 @@ main{padding:26px 0 80px}
 .b-g{background:rgba(20,241,149,.13);color:var(--grn)}
 .b-y{background:rgba(255,197,49,.13);color:var(--yel)}
 .b-r{background:rgba(255,77,106,.13);color:var(--red)}
+.b-s{background:rgba(255,255,255,.06);color:var(--mu);text-transform:none;letter-spacing:0}
+.b-s.hot{background:rgba(20,241,149,.13);color:var(--grn)}
 .b-b{background:rgba(59,157,255,.13);color:var(--blu)}
 .b-n{background:rgba(255,255,255,.06);color:var(--mu)}
 
@@ -184,6 +186,27 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
 .autolabel{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--mu);cursor:pointer;user-select:none}
 .autolabel input{accent-color:var(--grn);cursor:pointer}
 .statbar{display:flex;gap:18px;flex-wrap:wrap;align-items:baseline;padding:0 2px 12px;font-size:12.5px;color:var(--mu2)}
+.themeline{padding:0 2px 10px;font-size:14.5px;color:var(--tx);line-height:1.5}
+.themeline b{color:var(--grn);font-weight:650}
+.themes{display:flex;gap:7px;flex-wrap:wrap;align-items:center;padding:0 2px 16px}
+.themes .tlabel{font-size:10.5px;color:var(--mu2);text-transform:uppercase;letter-spacing:.07em;margin-right:4px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;border:1px solid var(--border);
+  background:rgba(255,255,255,.02);color:var(--mu);font-size:12.5px;cursor:pointer;font-family:inherit;transition:.15s}
+.chip:hover{color:var(--tx);border-color:var(--border2)}
+.chip.hot{border-color:rgba(20,241,149,.35);color:var(--grn);background:rgba(20,241,149,.06)}
+.chip.on{border-color:var(--grn);color:var(--grn);background:rgba(20,241,149,.13)}
+.chip .cn{font-family:var(--mono);font-size:11px;opacity:.75}
+.lagg{display:flex;gap:8px;align-items:flex-start;margin:10px 0 0;padding:9px 12px;border-radius:9px;
+  border:1px solid rgba(255,193,7,.22);background:rgba(255,193,7,.05);font-size:12.5px;color:var(--mu);line-height:1.5}
+.lagg b{color:var(--yel)}
+.laggbox{margin-top:16px;padding:15px 17px;border:1px solid var(--border2);border-radius:14px;background:var(--panel)}
+.laggbox h4{margin:0 0 4px;font-size:13.5px;font-weight:650;color:var(--tx)}
+.laggbox p{margin:0 0 11px;font-size:12.5px;color:var(--mu2);line-height:1.55}
+.laggrow{display:flex;gap:8px;flex-wrap:wrap}
+.laggpill{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border-radius:9px;border:1px solid var(--border);
+  background:rgba(255,255,255,.02);cursor:pointer;font-family:inherit;font-size:12.5px;color:var(--tx);transition:.15s}
+.laggpill:hover{border-color:var(--border2)}
+.laggpill span{font-family:var(--mono);font-size:11px;color:var(--mu2)}
 .statbar b{color:var(--tx);font-family:var(--mono);font-size:14px;font-weight:650}
 .statbar .live{display:inline-flex;align-items:center;gap:6px;color:var(--grn)}
 .orgwrap{display:flex;align-items:center;gap:8px;min-width:88px}
@@ -457,10 +480,79 @@ var OG_PRESETS = {
 };
 
 var jAutoTimer = null;
+var jSector = "";      // aktuell gewaehltes Thema, "" = alle
+
+/**
+ * Das Themenband.
+ *
+ * Gemessen wird ueber die GESAMTE beobachtete Menge, nicht nur ueber die
+ * eingestellte Groessenklasse. Sonst haenge "Katzen laufen" davon ab, wo
+ * gerade der Regler steht - und das waere keine Aussage ueber den Markt,
+ * sondern eine ueber die Reglerstellung.
+ */
+function themeBand(sectors){
+  if(!sectors || !sectors.length) return "";
+  var hot = sectors.filter(function(s){ return s.hot; });
+  var line = "";
+  if(hot.length){
+    var t = hot[0];
+    line = '<div class="themeline">'+esc(t.label)+' laufen gerade \u2014 <b>'+t.up+' von '+t.members+'</b> im Plus, '+
+      'in der Mitte '+pctTxt(t.medianMoveH1,0)+' in der Stunde.</div>';
+  } else {
+    line = '<div class="themeline" style="color:var(--mu2);font-size:13px">Kein Thema bewegt sich gerade geschlossen. '+
+      'Was laeuft, laeuft einzeln \u2014 das ist der unzuverlaessigere Fall.</div>';
+  }
+  var chips = '<button class="chip'+(jSector?"":" on")+'" data-sector="">Alle</button>' +
+    sectors.slice(0,7).map(function(s){
+      return '<button class="chip'+(s.hot?" hot":"")+(jSector===s.key?" on":"")+'" data-sector="'+esc(s.key)+'">'+
+        esc(s.label)+' <span class="cn">'+s.up+'/'+s.members+'</span></button>';
+    }).join("");
+  return line + '<div class="themes"><span class="tlabel">Themen</span>'+chips+'</div>';
+}
+
+/**
+ * Nachzuegler eines heissen Themas.
+ *
+ * Bewusst als Frage formuliert, nicht als Tipp. Ein Coin, der in einem
+ * laufenden Thema nicht mitlaeuft, hat dafuer zwei moegliche Gruende, und
+ * die App kann sie nicht auseinanderhalten. Wer das verschweigt, verkauft
+ * eine Vermutung als Signal.
+ */
+function laggardBox(sectors){
+  var hot = (sectors||[]).filter(function(s){ return s.hot && s.laggards && s.laggards.length; });
+  if(!hot.length) return "";
+  var t = hot[0];
+  return '<div class="laggbox">'+
+    '<h4>Noch nicht mitgelaufen: '+esc(t.label)+'</h4>'+
+    '<p>Diese Coins sitzen im gleichen Thema, haben die Bewegung aber noch nicht mitgemacht \u2014 bei anziehendem Umsatz. '+
+    'Das kann hei\u00dfen, sie kommen noch. Es kann genauso hei\u00dfen, der Markt l\u00e4sst sie bewusst liegen. '+
+    'Die App kann das nicht unterscheiden, also pr\u00fcf jeden einzeln.</p>'+
+    '<div class="laggrow">'+t.laggards.map(function(l){
+      return '<button class="laggpill" data-addr="'+esc(l.address)+'">'+esc(l.symbol||"?")+
+        ' <span>'+pctTxt(l.priceChangeH1,0)+' \u00b7 '+l.volumeSurge+'\u00d7 Umsatz</span></button>';
+    }).join("")+'</div></div>';
+}
 
 function jLabels(){
   el("j-mcap-val").textContent = MCAP_LABEL[+el("j-mcap").value];
   el("j-age-val").textContent  = AGE_LABEL[+el("j-age").value];
+}
+
+/** Klicks auf Themen-Chips und Nachzuegler-Pillen verdrahten. */
+function bindThemes(root){
+  root.querySelectorAll(".chip[data-sector]").forEach(function(c){
+    c.addEventListener("click", function(){
+      jSector = c.getAttribute("data-sector") || "";
+      loadJetzt();
+    });
+  });
+  root.querySelectorAll(".laggpill[data-addr]").forEach(function(pill){
+    pill.addEventListener("click", function(){
+      document.querySelector('.tab[data-view="scanner"]').click();
+      window.scrollTo(0,0);
+      scan(pill.getAttribute("data-addr"));
+    });
+  });
 }
 
 function loadJetzt(){
@@ -470,19 +562,25 @@ function loadJetzt(){
   var mcap = MCAP_STEPS[+el("j-mcap").value];
   var age  = AGE_STEPS[+el("j-age").value];
   var qs = "sort=surge&limit=12&minMcap="+mcap+"&minAge="+age+"&minLiquidity="+Math.max(3000, Math.round(mcap/50))+"&minVolumeH1=500";
+  if(jSector) qs += "&sector="+encodeURIComponent(jSector);
   apiFetch("/api/feed?"+qs)
     .then(function(j){
       if(!j.ok){ out.innerHTML='<div class="err">'+esc(j.error)+'</div>'; return; }
-      var hits = j.items.filter(function(i){ return i.surge > 0; }).slice(0,3);
+      var hits = j.items.filter(function(i){ return i.surge > 0; }).slice(0, jSector ? 5 : 3);
+      var band = themeBand(j.sectors);
       el("j-stats").innerHTML = '<div class="statbar"><span><b>'+j.scanned+'</b> Coins beobachtet</span>'+
         '<span><b>'+j.matched+'</b> in deiner Größenklasse</span>'+
         '<span class="live"><span style="width:6px;height:6px;border-radius:50%;background:var(--grn);display:inline-block"></span>gerade eben</span></div>';
       if(!hits.length){
-        out.innerHTML = '<div class="empty">In dieser Größenklasse bewegt sich gerade nichts Auffälliges.<br>'+
+        out.innerHTML = band + '<div class="empty">'+(jSector
+          ? 'In diesem Thema bewegt sich in deiner Größenklasse gerade nichts.'
+          : 'In dieser Größenklasse bewegt sich gerade nichts Auffälliges.')+'<br>'+
           '<span class="mu2">Das ist ein gültiges Ergebnis, kein Fehler — meistens passiert nämlich nichts. Regler weiter aufmachen oder in ein paar Minuten nochmal.</span></div>';
+        bindThemes(out);
         return;
       }
-      out.innerHTML = '<div class="cards">'+hits.map(bigCard).join("")+'</div>';
+      out.innerHTML = band + '<div class="cards">'+hits.map(bigCard).join("")+'</div>' + laggardBox(j.sectors);
+      bindThemes(out);
       document.querySelectorAll("#j-out .bigcard").forEach(function(c){
         c.addEventListener("click", function(e){
           if(e.target.closest("a")) return;
@@ -504,7 +602,11 @@ function headlineFor(it){
   if(org != null && org >= 20) parts.push("und <b>"+org+"% davon sind echte Trades</b> statt Bot-Handel");
   else if(org != null) parts.push("davon sind allerdings nur <b style=\"color:var(--yel)\">"+org+"%</b> echte Trades");
   if((it.holderChangeH1||0) >= 8) parts.push("die Holder-Zahl wächst um <b>"+Math.round(it.holderChangeH1)+"%</b> in der Stunde");
-  return parts.join(", ") + ".";
+  var out = parts.join(", ") + ".";
+  // Rueckenwind aus dem Thema: ein Coin, dessen ganze Ecke laeuft, hat
+  // einen Grund zu laufen. Ein Coin, der allein laeuft, hat nur sich selbst.
+  if(it.sectorHot && !it.sectorLaggard) out += ' <span style="color:var(--grn)">Und die ganze Ecke ' + esc(it.sectorLabel) + ' läuft mit.</span>';
+  return out;
 }
 
 /** Und was dagegen spricht - immer sichtbar, nie versteckt. */
@@ -539,9 +641,12 @@ function bigCard(it, i){
         '<span class="sym">'+esc(it.symbol||"?")+'</span>'+
         '<span class="nm">'+esc(it.name||"")+'</span>'+
         (it.stage==="graduated"?'<span class="badge b-g">migriert</span>':'<span class="badge b-y">Kurve</span>')+
+        (it.sectorLabel?'<span class="badge b-s'+(it.sectorHot?" hot":"")+'">'+esc(it.sectorLabel)+'</span>':'')+
         '<span class="scorepill '+scoreColor(it.score,it.verdict)+'">'+it.score+'</span>'+
       '</div>'+
       '<div class="headline">'+headlineFor(it)+'</div>'+
+      (it.sectorLaggard?'<div class="lagg">\u25f7 <span><b>Nachz\u00fcgler.</b> '+esc(it.sectorLabel||"Das Thema")+
+        ' laufen gerade, dieser hier noch nicht. Kann hei\u00dfen, er kommt noch \u2014 kann hei\u00dfen, der Markt l\u00e4sst ihn liegen.</span></div>':'')+
       againstFor(it)+
       '<div class="kpis">'+kpis+'</div>'+
       '<div class="linkrow" style="margin:0">'+
@@ -726,9 +831,9 @@ var PRESETS = {
   all:  { liq:3000,  vol:1000,  org:0,  minage:3,    maxage:"",  score:0,  stage:"any",       sort:"heat"    }
 };
 
-document.querySelectorAll(".preset").forEach(function(b){
+document.querySelectorAll(".preset[data-preset]").forEach(function(b){
   b.addEventListener("click", function(){
-    document.querySelectorAll(".preset").forEach(function(x){ x.classList.remove("on"); });
+    document.querySelectorAll(".preset[data-preset]").forEach(function(x){ x.classList.remove("on"); });
     b.classList.add("on");
     var p = PRESETS[b.getAttribute("data-preset")];
     el("f-liq").value=p.liq; el("f-vol").value=p.vol; el("f-organic").value=p.org; el("f-minage").value=p.minage;
