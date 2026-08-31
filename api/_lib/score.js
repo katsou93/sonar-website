@@ -136,9 +136,20 @@ function evaluate(input) {
 
   // ---------- Liquidität und Ausstiegsfähigkeit ----------
 
+  // Entscheidend ist nicht das Verhältnis allein, sondern ob DEIN Einsatz
+  // wieder rauskommt. Ein etablierter Coin hat oft nur 0,3% Liquidität zur
+  // Marktkapitalisierung und trotzdem einen Pool mit hunderttausenden Dollar -
+  // da steigst du mit 0,2 SOL problemlos aus. Nur die Kombination aus dünnem
+  // Verhältnis UND flachem Pool ist die Falle, vor der wir warnen wollen.
+  const DEEP_POOL = 250000;
   if (m.liquidityToMcap != null) {
-    if (m.liquidityToMcap < 0.02) {
-      flags.push(flag("liq_thin", "red", "Liquidität nur " + pct(m.liquidityToMcap * 100) + " der Marktkapitalisierung", "Der Chart sieht nach viel Geld aus, im Pool liegt aber fast nichts. Klassische Falle.", 25));
+    const deep = (m.liquidityUsd || 0) >= DEEP_POOL;
+    if (m.liquidityToMcap < 0.05 && deep) {
+      flags.push(
+        flag("liq_ratio_thin_deep", "info", "Liquidität " + pct(m.liquidityToMcap * 100) + " der Marktkapitalisierung", "Wenig im Verhältnis zur Bewertung, aber mit " + eur(m.liquidityUsd) + " im Pool kommst du mit normaler Positionsgröße raus.", 0),
+      );
+    } else if (m.liquidityToMcap < 0.02) {
+      flags.push(flag("liq_thin", "red", "Liquidität nur " + pct(m.liquidityToMcap * 100) + " der Marktkapitalisierung", "Der Chart sieht nach viel Geld aus, im Pool liegen aber nur " + eur(m.liquidityUsd) + ". Klassische Falle.", 25));
     } else if (m.liquidityToMcap < 0.05) {
       flags.push(flag("liq_lowish", "yellow", "Dünne Liquidität (" + pct(m.liquidityToMcap * 100) + " der Marktkapitalisierung)", "Größere Verkäufe bewegen den Kurs stark. Position klein halten.", 12));
     } else {
@@ -256,15 +267,17 @@ function evaluate(input) {
 function summarize(verdict, flags, input) {
   const reds = flags.filter((f) => f.level === "red");
   const fatalFlag = flags.find((f) => f.fatal);
-  if (fatalFlag) return "Finger weg: " + fatalFlag.title.toLowerCase() + ".";
+  if (fatalFlag) return "Finger weg — " + fatalFlag.title + ".";
   if (verdict === "avoid") {
+    const rest = reds.length - 1;
+    const extra = rest === 1 ? " (und ein weiterer roter Punkt)." : rest > 1 ? " (und " + rest + " weitere rote Punkte)." : ".";
     return reds.length
-      ? "Nicht kaufen. Hauptproblem: " + reds[0].title.toLowerCase() + (reds.length > 1 ? " (und " + (reds.length - 1) + " weitere rote Punkte)." : ".")
+      ? "Nicht kaufen. Hauptproblem: " + reds[0].title + extra
       : "Zu viele Schwächen auf einmal - lass ihn liegen.";
   }
   if (verdict === "caution") {
     const worst = flags.find((f) => f.level === "red") || flags.find((f) => f.level === "yellow");
-    return "Handelbar, aber nur mit kleinem Einsatz. Achte auf: " + (worst ? worst.title.toLowerCase() : "die gelben Punkte") + ".";
+    return "Handelbar, aber nur mit kleinem Einsatz. Achte auf: " + (worst ? worst.title : "die gelben Punkte") + ".";
   }
   const stage = input.stage === "graduated" ? "Migriert" : "Noch auf der Kurve";
   return stage + ", saubere Verteilung, tragfähige Liquidität. Das heißt nicht, dass er steigt - nur, dass die üblichen Fallen fehlen.";
