@@ -37,10 +37,10 @@ module.exports = async function handler(req, res) {
       minVolumeH1: (req.query && req.query.minVolumeH1) || 5000,
       minAge: (req.query && req.query.minAge) || 3,
       maxAge: windowMinutes,
-      minScore: (req.query && req.query.minScore) || 60,
+      minScore: (req.query && req.query.minScore) || 55,
       stage: (req.query && req.query.stage) || "any",
       socials: (req.query && req.query.socials) || "1",
-      sort: "heat",
+      sort: "early",
       limit: TELEGRAM_LIMIT,
     });
 
