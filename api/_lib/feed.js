@@ -23,6 +23,7 @@ const ds = require("./dexscreener");
 const { evaluate } = require("./score");
 
 const DEFAULT_FILTERS = {
+  minMarketCapUsd: 0,
   minLiquidityUsd: 3000,
   minAgeMinutes: 3,
   maxAgeMinutes: null,
@@ -43,6 +44,7 @@ function parseFilters(query) {
     return isFinite(n) ? n : d;
   };
   return {
+    minMarketCapUsd: num(q.minMcap, DEFAULT_FILTERS.minMarketCapUsd),
     minLiquidityUsd: num(q.minLiquidity, DEFAULT_FILTERS.minLiquidityUsd),
     minAgeMinutes: num(q.minAge, DEFAULT_FILTERS.minAgeMinutes),
     maxAgeMinutes: q.maxAge === "" || q.maxAge === undefined ? DEFAULT_FILTERS.maxAgeMinutes : num(q.maxAge, null),
@@ -51,7 +53,7 @@ function parseFilters(query) {
     requireSocials: q.socials === "1" || q.socials === "true",
     stage: ["any", "graduated", "bonding_curve"].indexOf(q.stage) !== -1 ? q.stage : "any",
     minScore: num(q.minScore, DEFAULT_FILTERS.minScore),
-    sort: ["heat", "new", "volume", "score", "organic", "holders", "early"].indexOf(q.sort) !== -1 ? q.sort : DEFAULT_FILTERS.sort,
+    sort: ["heat", "new", "volume", "score", "organic", "holders", "early", "surge"].indexOf(q.sort) !== -1 ? q.sort : DEFAULT_FILTERS.sort,
     limit: Math.min(200, Math.max(1, num(q.limit, DEFAULT_FILTERS.limit))),
   };
 }
@@ -98,6 +100,48 @@ function earlyOf(item) {
   // Was schon gross ist, kann nicht mehr "früh" sein.
   const small = !item.marketCap ? 1 : Math.max(0.2, Math.min(1, 2000000 / item.marketCap));
   return (holderGrowth * 2 + realBuyers + liqGrowth) * freshness * small;
+}
+
+/**
+ * Auffälligkeit für etablierte Coins.
+ *
+ * Bei einem Coin, der Wochen alt ist und Millionen an Liquidität hat, ist
+ * die Frage nicht mehr "ist das ein Rug" - das hat er überlebt. Die Frage
+ * ist: passiert hier GERADE etwas, das für DIESEN Coin ungewöhnlich ist?
+ *
+ * Deshalb wird alles am eigenen Normalzustand gemessen, nicht an absoluten
+ * Schwellen. Ein Coin mit 50k Stundenumsatz ist unauffällig, wenn er das
+ * immer macht - und hochinteressant, wenn sein Schnitt bei 5k liegt.
+ *
+ *   Umsatzsprung : aktuelle Stunde gegen den 24-Stunden-Schnitt
+ *   Holder-Zulauf: kommen echte neue Halter dazu?
+ *   Echtheit     : ist der Umsatz echt oder ein Bot-Karussell?
+ *   Fruehphase   : steht die Bewegung noch am Anfang oder schon senkrecht?
+ *
+ * Die letzte Zutat ist die wichtigste und die, die am meisten weh tut:
+ * ein Coin, der schon +300% gemacht hat, wird ABGEWERTET, nicht
+ * hochgestuft. Wer da einsteigt, kauft von denen, die vorher drin waren.
+ */
+function surgeOf(item) {
+  const avgHourly = item.volumeH24 > 0 ? item.volumeH24 / 24 : 0;
+  const volumeSurge = avgHourly > 0 ? item.volumeH1 / avgHourly : item.volumeH1 > 0 ? 3 : 0;
+  item.volumeSurge = volumeSurge;
+
+  // Ohne Umsatzsprung ist nichts los - dann hilft auch der Rest nicht.
+  if (volumeSurge < 1.2) return 0;
+
+  const surgeScore = Math.min(4, Math.log2(volumeSurge + 1));
+  const holderPush = Math.max(0, Math.min(2, (item.holderChangeH1 || 0) / 15));
+  const real = item.organicShareH1 == null ? 0.4 : Math.max(0.15, Math.min(1.2, item.organicShareH1 * 4));
+
+  // Je weiter der Kurs schon gelaufen ist, desto weniger interessant.
+  const move = item.priceChangeH1 || 0;
+  const earlyInMove = move <= 0 ? 0.7 : move < 30 ? 1 : move < 80 ? 0.8 : move < 200 ? 0.45 : 0.2;
+
+  // Verkaufsdruck streicht das Signal.
+  const pressure = item.buySellRatioH1 == null ? 1 : item.buySellRatioH1 < 0.9 ? 0.4 : 1;
+
+  return (surgeScore + holderPush) * real * earlyInMove * pressure;
 }
 
 function scoreItem(item) {
@@ -212,10 +256,12 @@ async function buildFeed(query) {
     });
     row.heat = heatOf(row);
     row.early = earlyOf(row);
+    row.surge = surgeOf(row);
     scored.push(row);
   }
 
   const filtered = scored.filter((it) => {
+    if ((it.marketCap || 0) < filters.minMarketCapUsd) return false;
     if ((it.liquidityUsd || 0) < filters.minLiquidityUsd) return false;
     if (it.volumeH1 < filters.minVolumeH1) return false;
     // Unbekanntes Alter darf einen Altersfilter NICHT passieren. Sonst
@@ -241,6 +287,7 @@ async function buildFeed(query) {
     if (filters.sort === "organic") return (b.organicShareH1 || 0) - (a.organicShareH1 || 0);
     if (filters.sort === "holders") return (b.holderCount || 0) - (a.holderCount || 0);
     if (filters.sort === "early") return b.early - a.early;
+    if (filters.sort === "surge") return b.surge - a.surge;
     return b.heat - a.heat;
   });
 
