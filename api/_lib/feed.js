@@ -227,10 +227,14 @@ const BLOCKED_SYMBOLS = new Set([
   "USDC","USDT","USDS","PYUSD","EURC","USDG","USD1","USDH","UXD","FDUSD","JUPUSD",
   "BTC","WBTC","CBBTC","ETH","WETH","ZEC","BNB","XRP","HYPE",
   "JITOSOL","MSOL","BSOL","BNSOL","INF","JUPSOL","HSOL","VSOL",
+  // Tokenisierte Rohstoffe und Infrastruktur, die im Live-Abruf durchrutschten
+  "PAXG","XAUT","XAUT0","XAGT","HNT","MOBILE","IOT","RENDER","RNDR","HELIUM",
+  "JLUSDC","JLSOL","JLUSDT",
 ]);
 
 /** Namensmuster fuer Dinge, die keine Memecoins sind. */
-const BLOCKED_NAME = /xstock|backpack securities|\bwrapped\b|\bportal\b|staked\s|liquid\s?staking|\bvault\b|\bindex\b|tokenized|real\s?world/i;
+const BLOCKED_NAME =
+  /xstock|backpack securities|\bwrapped\b|\bportal\b|staked\s|liquid\s?staking|\bvault\b|\bindex\b|tokenized|real\s?world|\bgold\b|\bsilver\b|spacex|pre-?ipo|\bequit(y|ies)\b|\bstock\b|\btreasur|money\s?market/i;
 
 function isNoise(item) {
   const sym = String(item.symbol || "").toUpperCase();
@@ -241,12 +245,21 @@ function isNoise(item) {
   // Liquid-Staking-Token traegt Jupiter selbst als Tag.
   if (item.tags && item.tags.indexOf("lst") !== -1) return true;
 
-  // Stablecoins erkennt man am Kurs, nicht am Namen: alles, was bei
-  // nennenswerter Groesse auf einem Dollar klebt, ist keiner von uns.
-  if (item.priceUsd != null && item.priceUsd > 0.97 && item.priceUsd < 1.03 && (item.marketCap || 0) > 500000) return true;
+  // Stablecoins erkennt man am Kurs, nicht am Namen. Aber Vorsicht: ein
+  // Memecoin darf auch mal bei einem Dollar stehen. Deshalb zaehlt der
+  // Kurs nur zusammen mit einem zweiten Hinweis - nennenswerte Groesse
+  // oder ein Dollar-Bezug im Namen.
+  const pegged = item.priceUsd != null && item.priceUsd > 0.97 && item.priceUsd < 1.03;
+  const dollarish = /usd|dai|eur|stable|pyusd|fdusd/i.test(String(item.symbol || "") + " " + String(item.name || ""));
+  if (pegged && ((item.marketCap || 0) > 500000 || dollarish)) return true;
 
-  // Aktien-Token heissen fast immer "<TICKER>x" oder "<TICKER>X".
-  if (/^[A-Z]{2,5}x$/.test(String(item.symbol || ""))) return true;
+  // Aktien-Token heissen fast immer "<TICKER>x" - oder tragen ein
+  // vorangestelltes Kuerzel wie "tSpaceX" fuer "tokenized".
+  const rawSym = String(item.symbol || "");
+  if (/^[A-Z]{2,5}x$/.test(rawSym)) return true;
+  if (/^[a-z]{1,2}[A-Z][A-Za-z]{2,}$/.test(rawSym) && /^(t|x|w|jl|b)/.test(rawSym)) return true;
+
+
 
   return false;
 }
