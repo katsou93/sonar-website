@@ -250,6 +250,7 @@ global.fetch = function (url, options) {
   return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
 };
 
+const { isNoise } = require("../api/_lib/feed");
 const { scan, extractAddress } = require("../api/_lib/scan");
 const { buildFeed } = require("../api/_lib/feed");
 const { resetCache } = require("../api/_lib/http");
