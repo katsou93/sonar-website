@@ -22,9 +22,14 @@ const { send, fail } = require("./_lib/respond");
 const TELEGRAM_LIMIT = 6; // nie mehr als 6 Nachrichten pro Lauf - sonst ist es Spam
 
 module.exports = async function handler(req, res) {
+  const crypto = require("crypto");
   const secret = process.env.SONAR_CRON_SECRET;
-  const given = (req.query && req.query.secret) || req.headers["x-sonar-secret"];
-  if (!secret || String(given) !== String(secret)) {
+  const given = String(req.headers["x-sonar-secret"] || (req.query && req.query.secret) || "");
+  const equal =
+    !!secret &&
+    given.length === String(secret).length &&
+    crypto.timingSafeEqual(Buffer.from(given), Buffer.from(String(secret)));
+  if (!equal) {
     return fail(res, 401, "Falsches oder fehlendes Secret.", "UNAUTHORIZED");
   }
 
@@ -53,11 +58,10 @@ module.exports = async function handler(req, res) {
       return fail(res, 500, "TELEGRAM_BOT_TOKEN oder TELEGRAM_CHAT_ID fehlt in den Environment-Variablen.", "NO_TELEGRAM");
     }
 
-    let sent = 0;
-    for (const hit of hits) {
-      const ok = await sendTelegram(botToken, chatId, formatMessage(hit));
-      if (ok) sent++;
-    }
+    // Parallel und mit hartem Timeout: sechs sequenzielle Aufrufe ohne
+    // Abbruchmöglichkeit konnten die Funktion bis zum Limit blockieren.
+    const results = await Promise.all(hits.map((hit) => sendTelegram(botToken, chatId, formatMessage(hit))));
+    const sent = results.filter(Boolean).length;
 
     send(res, 200, { ok: true, checked: feed.scanned, matched: hits.length, sent: sent });
   } catch (err) {
@@ -69,7 +73,7 @@ function formatMessage(item) {
   const money = (n) => (n == null ? "?" : n >= 1e6 ? "$" + (n / 1e6).toFixed(1) + "M" : "$" + Math.round(n / 100) / 10 + "k");
   const lines = [
     "<b>" + escapeHtml(item.symbol || "?") + "</b> — " + escapeHtml(item.name || "") + "  <b>" + item.score + "/100</b>",
-    item.ageMinutes + " Min alt · " + (item.stage === "graduated" ? "migriert" : "auf der Kurve"),
+    (item.ageMinutes == null ? "Alter unbekannt" : item.ageMinutes + " Min alt") + " · " + (item.stage === "graduated" ? "migriert" : "auf der Kurve"),
     "MCap " + money(item.marketCap) + " · Liq " + money(item.liquidityUsd) + " · Vol 1h " + money(item.volumeH1),
     "1h " + (item.priceChangeH1 >= 0 ? "+" : "") + Math.round(item.priceChangeH1) + "%" +
       (item.buySellRatioH1 != null ? " · " + item.buySellRatioH1.toFixed(2) + " Käufe/Verkauf" : ""),
@@ -87,9 +91,12 @@ function escapeHtml(text) {
 }
 
 async function sendTelegram(botToken, chatId, text) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6000);
   try {
     const res = await fetch("https://api.telegram.org/bot" + botToken + "/sendMessage", {
       method: "POST",
+      signal: controller.signal,
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         chat_id: chatId,
@@ -101,5 +108,7 @@ async function sendTelegram(botToken, chatId, text) {
     return res.ok;
   } catch (err) {
     return false;
+  } finally {
+    clearTimeout(timer);
   }
 }
