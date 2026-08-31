@@ -154,6 +154,16 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
   background-size:200% 100%;animation:sh 1.3s infinite;margin-bottom:8px}
 @keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
 
+.autolabel{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--mu);cursor:pointer;user-select:none}
+.autolabel input{accent-color:var(--grn);cursor:pointer}
+.statbar{display:flex;gap:18px;flex-wrap:wrap;align-items:baseline;padding:0 2px 12px;font-size:12.5px;color:var(--mu2)}
+.statbar b{color:var(--tx);font-family:var(--mono);font-size:14px;font-weight:650}
+.statbar .live{display:inline-flex;align-items:center;gap:6px;color:var(--grn)}
+.orgwrap{display:flex;align-items:center;gap:8px;min-width:88px}
+.orgbar{width:44px;height:5px;border-radius:3px;background:rgba(255,255,255,.09);overflow:hidden;flex:0 0 44px}
+.orgbar i{display:block;height:100%;border-radius:3px}
+.orgnum{font-family:var(--mono);font-size:12px}
+.curve{font-family:var(--mono);font-size:11px;color:var(--mu2)}
 .rules{font-size:13px;color:var(--mu);line-height:1.7}
 .rules b{color:var(--tx)}
 .rules ol{padding-left:18px;margin-top:8px}
@@ -225,23 +235,27 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
     <div class="filters">
       <button class="preset" data-preset="a">Strategie A — defensiv</button>
       <button class="preset" data-preset="b">Strategie B — frisch</button>
+      <button class="preset" data-preset="echt">Echtes Volumen</button>
       <button class="preset on" data-preset="all">Alles</button>
       <div class="hspace" style="flex:1"></div>
+      <label class="autolabel"><input type="checkbox" id="f-auto"> alle 30 s</label>
       <button class="btn btn-g btn-sm" id="reload">Aktualisieren</button>
     </div>
     <div class="fset">
-      <div class="fld"><label>Min. Liquidität $</label><input id="f-liq" value="5000" inputmode="numeric"></div>
-      <div class="fld"><label>Min. Volumen 1h $</label><input id="f-vol" value="2000" inputmode="numeric"></div>
-      <div class="fld"><label>Min. Alter (Min)</label><input id="f-minage" value="5" inputmode="numeric"></div>
+      <div class="fld"><label>Min. Liquidität $</label><input id="f-liq" value="3000" inputmode="numeric"></div>
+      <div class="fld"><label>Min. Volumen 1h $</label><input id="f-vol" value="1000" inputmode="numeric"></div>
+      <div class="fld"><label>Min. echt %</label><input id="f-organic" value="0" inputmode="numeric"></div>
+      <div class="fld"><label>Min. Alter (Min)</label><input id="f-minage" value="3" inputmode="numeric"></div>
       <div class="fld"><label>Max. Alter (Min)</label><input id="f-maxage" value="" placeholder="egal" inputmode="numeric"></div>
       <div class="fld"><label>Min. Score</label><input id="f-score" value="0" inputmode="numeric"></div>
       <div class="fld"><label>Phase</label><select id="f-stage">
         <option value="any">egal</option><option value="graduated">migriert</option><option value="bonding_curve">auf der Kurve</option>
       </select></div>
       <div class="fld"><label>Sortierung</label><select id="f-sort">
-        <option value="heat">Hitze</option><option value="new">neu</option><option value="volume">Volumen</option><option value="score">Score</option>
+        <option value="heat">Hitze</option><option value="new">neu</option><option value="volume">Volumen</option><option value="score">Score</option><option value="organic">echtes Volumen</option><option value="holders">Holder</option>
       </select></div>
     </div>
+    <div id="radarstats"></div>
     <div id="radarout"></div>
   </section>
 
@@ -271,7 +285,7 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
     </div>
   </section>
 
-  <p class="disc">Keine Anlageberatung. Alle Daten kommen von DexScreener, Rugcheck und einem öffentlichen Solana-RPC und können falsch, veraltet oder unvollständig sein — jedes Ergebnis ist ein Hinweis, keine Zusicherung. Der Handel mit Memecoins führt bei der Mehrheit der Teilnehmer zu Verlusten.</p>
+  <p class="disc">Keine Anlageberatung. Alle Daten kommen von Jupiter, DexScreener, Rugcheck und einem öffentlichen Solana-RPC und können falsch, veraltet oder unvollständig sein — jedes Ergebnis ist ein Hinweis, keine Zusicherung. Der Handel mit Memecoins führt bei der Mehrheit der Teilnehmer zu Verlusten.</p>
 </main>
 </div>
 
@@ -386,14 +400,20 @@ function renderReport(r){
 
   var warn = (r.warnings||[]).length ? '<div class="warn">'+r.warnings.map(esc).join("<br>")+'</div>' : "";
 
+  var org = r.organic || {};
+  var orgPct = org.shareH1==null ? null : org.shareH1*100;
+  var orgTxt = orgPct==null ? "—" :
+    '<span style="color:'+(orgPct<3?"var(--red)":orgPct<10?"var(--yel)":orgPct>=30?"var(--grn)":"var(--blu)")+'">'+
+    (orgPct<1?orgPct.toFixed(1):Math.round(orgPct))+'%</span>';
+
   var cells = [
     ["Marktkapital.", money(m.marketCap)],
     ["Liquidität", money(m.liquidityUsd)],
     ["Volumen 1h", money(m.volume.h1)],
-    ["Volumen 24h", money(m.volume.h24)],
+    ["Echtes Volumen", orgTxt],
     ["Kurs 1h", '<span class="'+(m.priceChange.h1>=0?"up":"dn")+'">'+pctTxt(m.priceChange.h1,0)+"</span>"],
     ["Alter", age(r.ageMinutes)],
-    ["Top 10", h.top10Pct==null?"—":h.top10Pct.toFixed(1)+"%"],
+    ["Holder", h.totalHolders==null?"—":num(h.totalHolders)],
     ["Käufe/Verk. 1h", m.buySellRatioH1==null?"—":m.buySellRatioH1.toFixed(2)]
   ].map(function(c){ return '<div class="cell"><b>'+c[1]+'</b><span>'+c[0]+'</span></div>'; }).join("");
 
@@ -409,8 +429,9 @@ function renderReport(r){
           : '<ul><li>'+blockers.map(esc).join("</li><li>")+'</li></ul>')+'</div>';
   }
 
-  var stageBadge = r.stage==="graduated" ? '<span class="badge b-g">migriert</span>'
-                 : r.stage==="bonding_curve" ? '<span class="badge b-y">auf der Kurve</span>' : '<span class="badge b-n">unklar</span>';
+  var stageBadge = (r.stage==="graduated" ? '<span class="badge b-g">migriert</span>'
+                 : r.stage==="bonding_curve" ? '<span class="badge b-y">auf der Kurve'+(r.bondingCurvePct!=null?" "+Math.round(r.bondingCurvePct)+"%":"")+'</span>' : '<span class="badge b-n">unklar</span>')
+                 + (r.launchpad ? '<span class="badge b-b">'+esc(r.launchpad)+'</span>' : '');
 
   return warn + '<div class="report"><div>'+
     '<div class="card">'+
@@ -430,6 +451,7 @@ function renderReport(r){
         '<button class="btn btn-g btn-sm" id="addwl">Auf die Watchlist</button>'+
       '</div>'+
       '<div class="srcrow"><i>Quellen:</i>'+
+        '<i>Jupiter '+(r.sources.jupiter?"✓":"—")+'</i>'+
         '<i>DexScreener '+(r.sources.dexscreener?"✓":"—")+'</i>'+
         '<i>Rugcheck '+(r.sources.rugcheck?"✓":"—")+'</i>'+
         '<i>RPC '+(r.sources.rpc?"✓":"—")+'</i>'+
@@ -448,8 +470,17 @@ function renderReport(r){
         '<div>In Pools gebunden: <b>'+(h.poolSharePct==null?"—":h.poolSharePct.toFixed(1)+"%")+'</b></div>'+
         '<div>Ersteller hält: <b>'+(h.creatorPct==null?"—":h.creatorPct.toFixed(1)+"%")+'</b></div>'+
         '<div>Holder gesamt: <b>'+(h.totalHolders==null?"—":h.totalHolders)+'</b></div>'+
+        '<div>Holder 1h: <b class="'+((r.holderChangeH1||0)>=0?"up":"dn")+'">'+(r.holderChangeH1==null?"—":pctTxt(r.holderChangeH1,0))+'</b></div>'+
         '<div style="margin-top:10px;color:var(--mu2);font-size:11.5px;line-height:1.6">Prozente beziehen sich auf das frei handelbare Angebot. Bonding Curve und AMM-Pools sind herausgerechnet — sonst sähe jeder frische Coin nach einem 79-%-Wal aus.</div>'+
       '</div></div>'+
+    '<div class="card"><h3>Echtes gegen künstliches Volumen</h3><div class="rules" style="font-size:12.5px">'+
+      '<div style="margin-bottom:8px">Anteil echter Trades (1h): <b>'+(orgPct==null?"—":orgTxt)+'</b></div>'+
+      (orgPct==null?'' : '<div class="orgbar" style="width:100%;height:7px;margin-bottom:10px"><i style="width:'+Math.max(2,Math.min(100,orgPct))+'%;background:'+(orgPct<3?"var(--red)":orgPct<10?"var(--yel)":orgPct>=30?"var(--grn)":"var(--blu)")+'"></i></div>')+
+      '<div>24 Stunden: <b>'+(org.shareH24==null?"—":Math.round(org.shareH24*100)+"%")+'</b></div>'+
+      '<div>Echte Käufer (1h): <b>'+(org.buyersH1==null?"—":org.buyersH1)+'</b></div>'+
+      '<div>Jupiter-Qualität: <b>'+(org.scoreLabel?esc(org.scoreLabel):"—")+'</b></div>'+
+      '<div style="margin-top:10px;color:var(--mu2);font-size:11.5px;line-height:1.6">Jupiter trennt echten Umsatz von Bots, die sich gegenseitig handeln. Ein niedriger Wert heißt: das Volumen im Chart ist Kulisse, keine Nachfrage.</div>'+
+    '</div></div>'+
     '<div class="card"><h3>Rechte am Contract</h3><div class="rules" style="font-size:12.5px">'+
       '<div>Mint-Authority: <b class="'+(r.authorities.mintAuthority?"dn":"up")+'">'+(r.authorities.mintAuthority?"AKTIV":"abgeschaltet")+'</b></div>'+
       '<div>Freeze-Authority: <b class="'+(r.authorities.freezeAuthority?"dn":"up")+'">'+(r.authorities.freezeAuthority?"AKTIV":"abgeschaltet")+'</b></div>'+
@@ -478,9 +509,10 @@ el("q").addEventListener("keydown", function(e){ if(e.key==="Enter") scan(this.v
 /* ---------- radar ---------- */
 var radarLoaded = false;
 var PRESETS = {
-  a:   { liq:30000, vol:10000, minage:1440, maxage:"", score:70, stage:"graduated", sort:"score" },
-  b:   { liq:5000,  vol:3000,  minage:5,    maxage:720, score:45, stage:"any",      sort:"heat"  },
-  all: { liq:5000,  vol:2000,  minage:5,    maxage:"",  score:0,  stage:"any",      sort:"heat"  }
+  a:    { liq:30000, vol:10000, org:15, minage:1440, maxage:"",  score:70, stage:"graduated", sort:"score"   },
+  b:    { liq:4000,  vol:2000,  org:5,  minage:3,    maxage:720, score:45, stage:"any",       sort:"heat"    },
+  echt: { liq:5000,  vol:3000,  org:25, minage:10,   maxage:"",  score:55, stage:"any",       sort:"organic" },
+  all:  { liq:3000,  vol:1000,  org:0,  minage:3,    maxage:"",  score:0,  stage:"any",       sort:"heat"    }
 };
 
 document.querySelectorAll(".preset").forEach(function(b){
@@ -488,56 +520,112 @@ document.querySelectorAll(".preset").forEach(function(b){
     document.querySelectorAll(".preset").forEach(function(x){ x.classList.remove("on"); });
     b.classList.add("on");
     var p = PRESETS[b.getAttribute("data-preset")];
-    el("f-liq").value=p.liq; el("f-vol").value=p.vol; el("f-minage").value=p.minage;
+    el("f-liq").value=p.liq; el("f-vol").value=p.vol; el("f-organic").value=p.org; el("f-minage").value=p.minage;
     el("f-maxage").value=p.maxage; el("f-score").value=p.score; el("f-stage").value=p.stage; el("f-sort").value=p.sort;
     loadRadar();
   });
 });
 el("reload").addEventListener("click", loadRadar);
 
+var lastFeedAt = null, autoTimer = null, tickTimer = null;
+
 function loadRadar(){
   radarLoaded = true;
   var out = el("radarout");
-  out.innerHTML = '<div class="tablewrap"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>';
+  if(!out.querySelector("table")) out.innerHTML = '<div class="tablewrap"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>';
   var qs = "minLiquidity="+(+el("f-liq").value||0)+
     "&minVolumeH1="+(+el("f-vol").value||0)+
+    "&minOrganic="+(+el("f-organic").value||0)+
     "&minAge="+(+el("f-minage").value||0)+
     "&maxAge="+(el("f-maxage").value||"")+
     "&minScore="+(+el("f-score").value||0)+
     "&stage="+el("f-stage").value+
-    "&sort="+el("f-sort").value+"&limit=50";
+    "&sort="+el("f-sort").value+"&limit=100";
   apiFetch("/api/feed?"+qs)
     .then(function(j){
       if(!j.ok){ out.innerHTML='<div class="err">'+esc(j.error)+'</div>'; return; }
-      if(!j.items.length){ out.innerHTML='<div class="empty">Kein Coin erfüllt diese Filter gerade.<br><span class="mu2">'+j.scanned+' Kandidaten geprüft. Filter lockern oder gleich nochmal aktualisieren.</span></div>'; return; }
+      lastFeedAt = Date.now();
+      renderStats(j);
+      if(!j.items.length){
+        out.innerHTML='<div class="empty">Kein Coin erfüllt diese Filter gerade.<br><span class="mu2">'+j.scanned+' Kandidaten geprüft. Filter lockern oder gleich nochmal aktualisieren.</span></div>';
+        return;
+      }
       out.innerHTML = renderTable(j);
       bindTable();
     })
     .catch(function(e){ out.innerHTML='<div class="err">Netzwerkfehler: '+esc(e.message)+'</div>'; });
 }
 
+function renderStats(j){
+  var warn = (j.warnings||[]).length ? '<span style="color:var(--yel)">'+esc(j.warnings[0])+'</span>' : '';
+  el("radarstats").innerHTML =
+    '<div class="statbar">'+
+      '<span><b>'+j.scanned+'</b> Kandidaten geprüft</span>'+
+      '<span><b>'+(j.matched!=null?j.matched:j.items.length)+'</b> passen zu deinen Filtern</span>'+
+      '<span><b>'+j.items.length+'</b> angezeigt</span>'+
+      '<span class="live"><span class="dot" style="width:6px;height:6px;border-radius:50%;background:var(--grn);display:inline-block"></span><span id="ago">gerade eben</span></span>'+
+      warn+
+    '</div>';
+}
+
+function tickAgo(){
+  var e = el("ago");
+  if(!e || !lastFeedAt) return;
+  var s = Math.round((Date.now()-lastFeedAt)/1000);
+  e.textContent = s < 5 ? "gerade eben" : "vor "+(s<60 ? s+" s" : Math.round(s/60)+" min");
+}
+tickTimer = setInterval(tickAgo, 1000);
+
+function setAuto(on){
+  if(autoTimer){ clearInterval(autoTimer); autoTimer = null; }
+  if(on) autoTimer = setInterval(function(){
+    if(document.getElementById("view-radar").classList.contains("on")) loadRadar();
+  }, 30000);
+}
+el("f-auto").addEventListener("change", function(){ setAuto(this.checked); });
+
+function organicCell(share){
+  if(share == null) return '<span class="mu2" style="font-size:11.5px">—</span>';
+  var p = Math.max(0, Math.min(100, share*100));
+  var col = p < 3 ? "var(--red)" : p < 10 ? "var(--yel)" : p >= 30 ? "var(--grn)" : "var(--blu)";
+  return '<div class="orgwrap"><div class="orgbar"><i style="width:'+Math.max(3,p)+'%;background:'+col+'"></i></div>'+
+         '<span class="orgnum" style="color:'+col+'">'+(p<1?p.toFixed(1):Math.round(p))+'%</span></div>';
+}
+
+function num(n){
+  if(n==null) return "—";
+  if(n>=1e6) return (n/1e6).toFixed(1)+"M";
+  if(n>=1000) return (n/1000).toFixed(1)+"k";
+  return String(n);
+}
+
 function renderTable(j){
   var rows = j.items.map(function(it){
     var fl = (it.topFlags||[]).map(function(f){
-      return '<span class="badge '+(f.level==="red"?"b-r":"b-y")+'" style="margin-right:4px">'+esc(f.title.length>28?f.title.slice(0,27)+"…":f.title)+'</span>';
+      return '<span class="badge '+(f.level==="red"?"b-r":"b-y")+'" style="margin-right:4px">'+esc(f.title.length>26?f.title.slice(0,25)+"…":f.title)+'</span>';
     }).join("");
+    var phase = it.stage==="graduated"
+      ? '<span class="badge b-g">migriert</span>'
+      : '<span class="badge b-y">Kurve</span>'+(it.bondingCurvePct!=null?'<div class="curve">'+Math.round(it.bondingCurvePct)+'%</div>':'');
     return '<tr data-addr="'+esc(it.address)+'">'+
       '<td><div class="tok">'+avatar(it.imageUrl,it.symbol,"av")+
         '<div style="min-width:0"><div class="tk">'+esc(it.symbol||"?")+'</div><div class="tn">'+esc(it.name||"")+'</div></div></div></td>'+
       '<td><span class="scorepill '+scoreColor(it.score,it.verdict)+'">'+it.score+'</span></td>'+
+      '<td>'+organicCell(it.organicShareH1)+'</td>'+
       '<td class="mono">'+age(it.ageMinutes)+'</td>'+
       '<td class="mono">'+money(it.marketCap)+'</td>'+
       '<td class="mono">'+money(it.liquidityUsd)+'</td>'+
       '<td class="mono">'+money(it.volumeH1)+'</td>'+
+      '<td class="mono">'+num(it.holderCount)+'</td>'+
       '<td class="mono '+(it.priceChangeH1>=0?"up":"dn")+'">'+pctTxt(it.priceChangeH1,0)+'</td>'+
-      '<td>'+(it.stage==="graduated"?'<span class="badge b-g">migriert</span>':'<span class="badge b-y">Kurve</span>')+'</td>'+
+      '<td>'+phase+'</td>'+
       '<td>'+(fl||'<span class="mu2" style="font-size:11.5px">—</span>')+'</td>'+
     '</tr>';
   }).join("");
   return '<div class="tablewrap"><table><thead><tr>'+
-    '<th>Coin</th><th>Score</th><th>Alter</th><th>MCap</th><th>Liquidität</th><th>Vol 1h</th><th>1h</th><th>Phase</th><th>Auffällig</th>'+
+    '<th>Coin</th><th>Score</th><th title="Anteil echten Volumens, Bot-Handel herausgerechnet">Echt</th><th>Alter</th><th>MCap</th><th>Liquidität</th><th>Vol 1h</th><th>Holder</th><th>1h</th><th>Phase</th><th>Auffällig</th>'+
     '</tr></thead><tbody>'+rows+'</tbody></table></div>'+
-    '<p class="hint" style="margin-top:12px">'+j.items.length+' von '+j.scanned+' geprüften Kandidaten. Zeile anklicken für den vollen Check. Quelle sind die aktuellen DexScreener-Profile und Boosts — das ist kein vollständiger Launch-Stream, sondern das, was gerade Aufmerksamkeit zieht.</p>';
+    '<p class="hint" style="margin-top:12px"><b style="color:var(--mu)">Echt</b> = wie viel des Umsatzes von echten Menschen kommt statt von Bots, die sich gegenseitig handeln. Unter 3 % ist der Chart reine Kulisse. Zeile anklicken für den vollen Check.</p>';
 }
 
 function bindTable(){
@@ -566,9 +654,9 @@ function addToWatchlist(address, symbol){
 function renderWatchlist(){
   var list = getWatchlist(), out = el("wlout");
   if(!list.length){ out.innerHTML = '<div class="empty">Noch nichts auf der Watchlist.<br><span class="mu2">Im Scanner unten auf „Auf die Watchlist“ klicken.</span></div>'; return; }
-  out.innerHTML = '<div class="tablewrap"><table><thead><tr><th>Coin</th><th>Score</th><th>Alter</th><th>MCap</th><th>Liquidität</th><th>Vol 1h</th><th>1h</th><th></th></tr></thead><tbody id="wlbody">'+
+  out.innerHTML = '<div class="tablewrap"><table><thead><tr><th>Coin</th><th>Score</th><th>Echt</th><th>Alter</th><th>MCap</th><th>Liquidität</th><th>Vol 1h</th><th>1h</th><th></th></tr></thead><tbody id="wlbody">'+
     list.map(function(x){ return '<tr data-addr="'+esc(x.address)+'"><td><div class="tok">'+avatar(null,x.symbol,"av")+'<div><div class="tk">'+esc(x.symbol||"?")+'</div><div class="tn mono">'+esc(x.address.slice(0,6))+'…</div></div></div></td>'+
-      '<td colspan="6" class="mu2" style="font-size:12px">wird geprüft <span class="spin"></span></td>'+
+      '<td colspan="7" class="mu2" style="font-size:12px">wird geprüft <span class="spin"></span></td>'+
       '<td><button class="btn btn-g btn-sm wl-del" data-addr="'+esc(x.address)+'">×</button></td></tr>'; }).join("")+
     '</tbody></table></div>';
   bindWatchlistButtons();
@@ -580,9 +668,10 @@ function refreshWatchRow(address){
     .then(function(j){
       var tr = document.querySelector('#wlbody tr[data-addr="'+address+'"]');
       if(!tr) return;
-      if(!j.ok){ tr.children[1].outerHTML = '<td colspan="6" class="mu2" style="font-size:12px">'+esc(j.error)+'</td>'; return; }
+      if(!j.ok){ tr.children[1].outerHTML = '<td colspan="7" class="mu2" style="font-size:12px">'+esc(j.error)+'</td>'; return; }
       var r = j.report, m = r.market;
       var cells = '<td><span class="scorepill '+scoreColor(r.score,r.verdict)+'">'+r.score+'</span></td>'+
+        '<td>'+organicCell(r.organic ? r.organic.shareH1 : null)+'</td>'+
         '<td class="mono">'+age(r.ageMinutes)+'</td>'+
         '<td class="mono">'+money(m.marketCap)+'</td>'+
         '<td class="mono">'+money(m.liquidityUsd)+'</td>'+

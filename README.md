@@ -16,7 +16,9 @@ Landingpage und internes Terminal für die Signal- und Discovery-Schicht für So
 - **Score 0–100 mit vollständiger Begründung.** Jeder Punktabzug hängt an einem Flag im Klartext. `100 − Summe der Abzüge = Score`, nachrechenbar.
 - Einordnung, ob der Coin zu Strategie A (defensiv) oder B (frisch) passt — inklusive der konkreten Gründe, warum nicht
 
-**Radar** (`/api/feed`) — neue und heiß laufende Token, gefiltert nach Liquidität, Alter, Volumen, Phase und Score. Presets für beide Strategien.
+**Radar** (`/api/feed`) — neue und heiß laufende Token aus **zehn parallel abgefragten Jupiter-Listen** plus DexScreener-Ergänzung, entdoppelt: je nach Marktlage 150–250 Kandidaten statt der ~40, die DexScreener allein liefert. Gefiltert nach Liquidität, Alter, Volumen, Anteil echten Volumens, Phase und Score. Presets für beide Strategien.
+
+**Echtes gegen künstliches Volumen** — der wichtigste Filter im ganzen Werkzeug. Jupiter trennt organischen Umsatz von dem, was Bots untereinander hin- und herschieben. Ein Coin mit 227k Umsatz, davon 15k organisch, sieht im Chart nach Nachfrage aus und ist in Wirklichkeit ein Karussell. Unter 3 % gibt es eine rote Flagge.
 
 **Watchlist** — lokal im Browser, wird bei jedem Öffnen neu geprüft.
 
@@ -39,6 +41,7 @@ api/
   _lib/
     auth.js             Passwortprüfung (gesalzener Hash, zeitkonstanter Vergleich)
     http.js             Fetch mit Timeout, Retry, Cache, Parallelitätsgrenze
+    jupiter.js          Kandidatensuche, Holder, Contract-Rechte, echtes Volumen
     dexscreener.js      Marktdaten, Phasenerkennung, Alter
     rugcheck.js         Contract-Risiken
     solana.js           RPC: Authorities und Holder-Verteilung ohne Pools
@@ -90,9 +93,9 @@ Läuft ohne Netzwerk, ersetzt `fetch` durch Fixtures und prüft die gesamte Kett
 
 ## Datenquellen
 
-DexScreener (Marktdaten, Profile, Boosts), Rugcheck (Contract-Risiken), öffentliches Solana-RPC. Alle kostenlos und alle mit Rate-Limits — jede Quelle darf einzeln ausfallen, der Report weist das dann in `sources` und `warnings` aus.
+**Jupiter** (Kandidatenlisten, Holder-Zahl, Top-Holder-Anteil, Mint-/Freeze-Rechte, Graduation-Zeitpunkt, organisches Volumen), **DexScreener** (Marktdaten, Profile, Boosts), **Rugcheck** (Contract-Risiken), **öffentliches Solana-RPC** (exakte Holder-Verteilung ohne Pools). Alle kostenlos, alle mit Rate-Limits — jede Quelle darf einzeln ausfallen, der Report weist das in `sources` und `warnings` aus.
 
-Kein vollständiger Launch-Stream: DexScreener bietet keinen offenen „alle neuen Paare"-Endpunkt. Der Radar arbeitet mit den zuletzt aktualisierten Token-Profilen und den gebuchten Boosts — also mit dem, was gerade Aufmerksamkeit einsammelt.
+Immer noch kein vollständiger Launch-Stream: es gibt keinen offenen „jeder neue Coin in Echtzeit"-Endpunkt. Der Radar zeigt, was gerade gehandelt wird und Aufmerksamkeit zieht — nach Umsatz, organischem Score und Neuheit über vier Zeitfenster.
 
 ## Rechtliches
 
