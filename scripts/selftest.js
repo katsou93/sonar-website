@@ -442,6 +442,39 @@ async function main() {
     assert.ok(!top || top.liquidityUsd, "Eintrag ohne Liquiditaet steht ganz oben");
   });
 
+  console.log("\nGrundmenge sauber halten");
+  // Echte Namen aus zwei Live-Abrufen. Ohne diesen Filter standen
+  // tokenisierte Aktien, Gold und Stablecoins im Memecoin-Radar.
+  const RAUS = [
+    ["cbBTC", "Coinbase Wrapped BTC", 0.004, 3e6], ["USD1", "World Liberty Financial USD", 1.0, 3e6],
+    ["ETH", "Ether (Portal)", 0.004, 3e6], ["JupUSD", "Jupiter USD", 1.0, 3e6],
+    ["NVDAx", "NVIDIA xStock", 180, 3e6], ["SPYx", "SP500 xStock", 600, 3e6],
+    ["MU", "Micron Technology - Backpack Securities", 90, 3e6], ["RAY", "Raydium", 2, 3e6],
+    ["PAXG", "PAX Gold", 3900, 3e6], ["XAUt0", "Tether Gold", 3900, 3e6],
+    ["tSpaceX", "SpaceX Pre-IPO", 0.5, 3e6], ["jlUSDC", "Jupiter Lend USDC", 1.0, 2e5],
+  ];
+  const DRIN = [
+    ["OTC", "OTC", 0.004], ["USELESS", "USELESS COIN", 0.2], ["jailstool", "Stool Prisondente", 0.004],
+    ["CYBERLEEK", "CyberLeek", 0.004], ["Fartcoin", "Fartcoin", 0.9], ["PENGU", "Pudgy Penguins", 0.03],
+    ["TRUMP", "OFFICIAL TRUMP", 8], ["Jimothy", "Jimothy The Raccoon", 0.004],
+    ["HeeHaw", "Justice for HeeHaw", 0.004], ["SPX", "SPX6900", 1.4], ["Bonk", "Bonk", 0.00002],
+  ];
+  await check("Aktien, Gold und Stablecoins fliegen raus", () => {
+    RAUS.forEach(function (row) {
+      assert.ok(isNoise({ symbol: row[0], name: row[1], priceUsd: row[2], marketCap: row[3], tags: [] }),
+        row[0] + " (" + row[1] + ") haette rausfliegen muessen");
+    });
+  });
+  await check("echte Memecoins bleiben drin", () => {
+    DRIN.forEach(function (row) {
+      assert.ok(!isNoise({ symbol: row[0], name: row[1], priceUsd: row[2], marketCap: 3e6, tags: [] }),
+        row[0] + " wurde faelschlich aussortiert");
+    });
+  });
+  await check("ein Memecoin bei genau einem Dollar ueberlebt", () => {
+    assert.ok(!isNoise({ symbol: "EINS", name: "Ein Dollar Coin", priceUsd: 1.0, marketCap: 120000, tags: [] }));
+  });
+
   console.log(failures === 0 ? "\nAlle Tests bestanden.\n" : "\n" + failures + " Test(s) fehlgeschlagen.\n");
   process.exit(failures === 0 ? 0 : 1);
 }
