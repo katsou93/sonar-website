@@ -343,4 +343,140 @@ function measure(items) {
   return { sectors: sectors, byKey: byKey };
 }
 
-module.exports = { sectorOf, measure, labelOf, tokenize, heatOfMembers, SECTORS, MIN_MEMBERS, HOT_THRESHOLD };
+/* ------------------------------------------------------------------ *
+ * Wortwellen - Themen finden, die in keinem Lexikon stehen
+ * ------------------------------------------------------------------ */
+
+/**
+ * Das Lexikon oben kennt fuenfzehn Ecken. Ein viraler Waschbaer aus
+ * Seattle steht in keiner davon, und genau das ist das Problem: das
+ * Naechste, was abgeht, hat noch keinen Namen, den irgendwer vorher
+ * aufgeschrieben haette.
+ *
+ * Deshalb hier der umgekehrte Weg: nicht nach bekannten Worten suchen,
+ * sondern zaehlen, welche Worte gerade AUFFAELLIG OFT in Coin-Namen
+ * vorkommen. Tauchen fuenf Coins mit "raccoon" auf und gestern war
+ * keiner dabei, dann ist das die Welle - ohne dass jemand vorher wissen
+ * musste, dass es Waschbaeren sein wuerden.
+ *
+ * Das ist der Teil, der sich von selbst aktualisiert.
+ */
+
+/** Worte, die in Coin-Namen immer vorkommen und nichts bedeuten. */
+const STOPWORDS = new Set([
+  "coin", "token", "the", "and", "for", "with", "official", "meme", "memecoin",
+  "solana", "sol", "pump", "fun", "network", "protocol", "finance", "labs",
+  "capital", "money", "cash", "crypto", "chain", "swap", "dao", "app", "inc",
+  "team", "club", "world", "life", "time", "day", "new", "old", "big", "little",
+  "super", "mega", "ultra", "baby", "mini", "king", "queen", "lord", "god",
+  "first", "last", "next", "real", "true", "best", "good", "bad", "top",
+  "wrapped", "staked", "index", "vault", "fund", "trust", "group", "global",
+  "www", "com", "net", "org", "https", "http",
+]);
+
+/** Alle bekannten Lexikon-Worte - die brauchen keine zweite Meldung. */
+function knownVocabulary() {
+  const set = new Set();
+  for (const sector of SECTORS) {
+    for (const word of sector.words) set.add(word);
+    for (const part of sector.parts) set.add(part);
+  }
+  return set;
+}
+
+const KNOWN = knownVocabulary();
+
+/** Die Worte eines Coins, gefiltert auf das, was ueberhaupt aussagekraeftig ist. */
+function meaningfulWords(item) {
+  const words = tokenize(String(item.name || "") + " " + String(item.symbol || ""));
+  const out = new Set();
+  for (const word of words) {
+    if (word.length < 4 || word.length > 20) continue;
+    if (/^[0-9]+$/.test(word)) continue;
+    if (STOPWORDS.has(word)) continue;
+    out.add(word);
+  }
+  return Array.from(out);
+}
+
+/** Wie viele Coins mindestens ein Wort teilen muessen, damit es eine Welle ist. */
+const WAVE_MIN_COINS = 3;
+
+/**
+ * Wortwellen finden.
+ *
+ * Neben der reinen Haeufigkeit zaehlt vor allem, ob die betroffenen Coins
+ * JUNG sind. Fuenf alte Coins, die zufaellig alle "moon" heissen, sind
+ * keine Welle - fuenf Coins von heute Nachmittag mit demselben Wort sehr
+ * wohl. Deshalb geht das Medianalter in die Bewertung ein.
+ *
+ * Lexikon-Worte werden ausdruecklich MITGEZAEHLT: "raccoon" ist zwar
+ * unter "Andere Tiere" bekannt, aber die Welle auf Wortebene ist die
+ * genauere Aussage - "fuenf Waschbaeren" hilft mehr als "sieben Tiere".
+ * Solche Treffer sind mit known:true markiert.
+ *
+ * @param items    die beobachteten Coins
+ * @param options  { excludeKnown: Lexikon-Worte weglassen }
+ */
+function discoverWaves(items, options) {
+  const opts = options || {};
+  const groups = new Map();
+
+  for (const item of items || []) {
+    for (const word of meaningfulWords(item)) {
+      if (opts.excludeKnown && KNOWN.has(word)) continue;
+      const list = groups.get(word) || [];
+      list.push(item);
+      groups.set(word, list);
+    }
+  }
+
+  const waves = [];
+  for (const [word, members] of groups) {
+    if (members.length < WAVE_MIN_COINS) continue;
+
+    const stats = heatOfMembers(members);
+    const ages = members.map((m) => (m.ageMinutes == null ? null : m.ageMinutes)).filter((a) => a != null);
+    const medianAge = ages.length ? median(ages) : null;
+    const fresh = medianAge == null ? 0.5 : medianAge < 360 ? 1 : medianAge < 1440 ? 0.8 : medianAge < 10080 ? 0.5 : 0.25;
+
+    // Staerke: wie viele Coins teilen das Wort, wie frisch sind sie, und
+    // bewegt sich die Gruppe ueberhaupt. Alles drei muss stimmen.
+    const size = Math.min(1, (members.length - 2) / 6);
+    const strength = Math.round((size * 45 + fresh * 30 + (stats.heat / 100) * 25));
+
+    waves.push({
+      word: word,
+      coins: members.length,
+      up: stats.up,
+      medianMoveH1: Math.round(stats.medianMoveH1 * 10) / 10,
+      medianAgeMinutes: medianAge == null ? null : Math.round(medianAge),
+      volumeH1: Math.round(stats.volumeH1),
+      strength: Math.max(0, Math.min(100, strength)),
+      known: KNOWN.has(word),
+      examples: members
+        .slice()
+        .sort((a, b) => (b.volumeH1 || 0) - (a.volumeH1 || 0))
+        .slice(0, 4)
+        .map((m) => ({ address: m.address, symbol: m.symbol, name: m.name, priceChangeH1: m.priceChangeH1 || 0 })),
+    });
+  }
+
+  waves.sort((a, b) => b.strength - a.strength);
+  return waves;
+}
+
+module.exports = {
+  sectorOf,
+  measure,
+  labelOf,
+  tokenize,
+  heatOfMembers,
+  discoverWaves,
+  meaningfulWords,
+  SECTORS,
+  STOPWORDS,
+  MIN_MEMBERS,
+  HOT_THRESHOLD,
+  WAVE_MIN_COINS,
+};

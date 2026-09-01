@@ -21,6 +21,7 @@
 const jup = require("./jupiter");
 const ds = require("./dexscreener");
 const narrative = require("./narrative");
+const watch = require("./watchwords");
 const { evaluate } = require("./score");
 
 const DEFAULT_FILTERS = {
@@ -34,6 +35,7 @@ const DEFAULT_FILTERS = {
   stage: "any",
   minScore: 0,
   sector: "",
+  words: null,
   sort: "heat",
   limit: 60,
 };
@@ -56,6 +58,9 @@ function parseFilters(query) {
     stage: ["any", "graduated", "bonding_curve"].indexOf(q.stage) !== -1 ? q.stage : "any",
     minScore: num(q.minScore, DEFAULT_FILTERS.minScore),
     sector: typeof q.sector === "string" && /^[a-z]{2,20}$/.test(q.sector) ? q.sector : DEFAULT_FILTERS.sector,
+    // null = die mitgelieferte Liste nehmen. Ein leerer String heisst
+    // ausdruecklich "keine Stichworte" und schaltet die Wache ab.
+    words: typeof q.words === "string" ? q.words.slice(0, 400) : DEFAULT_FILTERS.words,
     sort: ["heat", "new", "volume", "score", "organic", "holders", "early", "surge", "sector"].indexOf(q.sort) !== -1 ? q.sort : DEFAULT_FILTERS.sort,
     limit: Math.min(200, Math.max(1, num(q.limit, DEFAULT_FILTERS.limit))),
   };
@@ -320,6 +325,15 @@ async function buildFeed(query) {
   // Mindest-Marktwert der Nutzer gerade eingestellt hat.
   const themes = narrative.measure(scored);
 
+  // Die Stichwort-Wache laeuft ebenfalls VOR den Filtern. Ein Coin zu
+  // einem gerade laufenden Thema ist oft Minuten alt und wuerde jeden
+  // Altersfilter reissen - genau den willst du aber sehen.
+  const watched = watch.scan(scored, filters.words);
+
+  // Wortwellen: das Gegenstueck zum festen Lexikon. Findet Themen, die
+  // noch niemand aufgeschrieben hat, weil sie erst heute entstanden sind.
+  const waves = narrative.discoverWaves(scored);
+
   const filtered = scored.filter((it) => {
     if ((it.marketCap || 0) < filters.minMarketCapUsd) return false;
     if ((it.liquidityUsd || 0) < filters.minLiquidityUsd) return false;
@@ -360,6 +374,13 @@ async function buildFeed(query) {
   return {
     items: filtered.slice(0, filters.limit),
     sectors: themes.sectors.slice(0, 8),
+    waves: waves.slice(0, 6),
+    watch: {
+      words: watched.words,
+      substance: watched.substance.slice(0, 8),
+      seen: watched.seen.slice(0, 12),
+      seenTotal: watched.seen.length,
+    },
     filters: filters,
     warnings: warnings,
     scanned: scored.length,
