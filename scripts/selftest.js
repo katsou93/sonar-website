@@ -694,6 +694,90 @@ async function main() {
     assert.strictEqual(res.seen.length, 0);
   });
 
+  console.log("\nAussenwelt");
+  const bz = require("../api/_lib/buzz");
+
+  const TRENDS_XML =
+    '<rss><channel>' +
+    '<item><title>Jimothy the Raccoon</title><ht:approx_traffic>20,000+</ht:approx_traffic></item>' +
+    '<item><title><![CDATA[Ford Field &amp; Weather Today]]></title><ht:approx_traffic>5,000+</ht:approx_traffic></item>' +
+    '<item><title>GME Stock Price</title></item>' +
+    '</channel></rss>';
+
+  await check("RSS-Titel werden samt CDATA und Entities gelesen", () => {
+    const titles = bz.rssTitles(TRENDS_XML);
+    assert.strictEqual(titles.length, 3);
+    assert.strictEqual(titles[0].title, "Jimothy the Raccoon");
+    assert.strictEqual(titles[0].traffic, 20000);
+    assert.strictEqual(titles[1].title, "Ford Field & Weather Today");
+  });
+
+  await check("kaputtes RSS wirft nicht, sondern liefert nichts", () => {
+    assert.deepStrictEqual(bz.rssTitles("<html>kein rss</html>"), []);
+    assert.deepStrictEqual(bz.rssTitles(null), []);
+  });
+
+  await check("Nachrichten-Fuellwoerter werden aussortiert", () => {
+    const bucket = new Map();
+    bz.termsFromTitles(bz.rssTitles(TRENDS_XML), bucket, "trends_us");
+    const terms = Array.from(bucket.keys());
+    for (const junk of ["weather", "today", "stock", "price", "the"]) {
+      assert.ok(terms.indexOf(junk) === -1, junk + " haette rausfliegen muessen");
+    }
+    assert.ok(terms.indexOf("raccoon") !== -1, "raccoon fehlt");
+    assert.ok(terms.indexOf("jimothy") !== -1, "jimothy fehlt");
+  });
+
+  await check("ein Begriff aus zwei Quellen merkt sich beide", () => {
+    const bucket = new Map();
+    bz.termsFromTitles([{ title: "Raccoon sighting", traffic: 1000 }], bucket, "trends_us");
+    bz.termsFromTitles([{ title: "The raccoon returns", traffic: 0 }], bucket, "news");
+    const hit = bucket.get("raccoon");
+    assert.deepStrictEqual(Array.from(hit.sources).sort(), ["news", "trends_us"]);
+    assert.strictEqual(hit.traffic, 1000, "das hoehere Volumen muss gewinnen");
+  });
+
+  await check("Wikipedia fragt gestern ab, nicht heute", () => {
+    // Heutige Tagesstatistik ist noch nicht fertig - das gaebe einen 404.
+    assert.strictEqual(bz.wikiPath(Date.parse("2026-09-01T07:00:00Z")), "2026/08/30");
+    assert.strictEqual(bz.wikiPath(Date.parse("2026-03-02T23:00:00Z")), "2026/03/01");
+  });
+
+  await check("die Kreuzung findet nur Begriffe, die auch als Coin existieren", () => {
+    const terms = [
+      { term: "raccoon", sources: ["trends_us", "news"], traffic: 20000 },
+      { term: "portugal", sources: ["trends_us"], traffic: 50000 },
+    ];
+    const coins = [
+      { address: "gut", symbol: "RACC", name: "Raccoon Seattle", ageMinutes: 40, volumeH1: 140000,
+        liquidityUsd: 95000, organicShareH1: 0.42, holderCount: 1400, priceChangeH1: 30, topFlags: [] },
+      { address: "muell", symbol: "RACCOON", name: "Raccoon Inu", ageMinutes: 8, volumeH1: 500,
+        liquidityUsd: 300, organicShareH1: 0, holderCount: 9, topFlags: [] },
+      { address: "egal", symbol: "DOGE", name: "Dogecoin", ageMinutes: 90000, volumeH1: 1e6,
+        liquidityUsd: 1e7, organicShareH1: 0.5, holderCount: 9e5, topFlags: [] },
+    ];
+    const crossings = bz.crossWithCoins(coins, terms);
+    assert.strictEqual(crossings.length, 1, "portugal hat keinen Coin und darf nicht auftauchen");
+    assert.strictEqual(crossings[0].term, "raccoon");
+    assert.strictEqual(crossings[0].coins, 2);
+    assert.strictEqual(crossings[0].withSubstance, 1, "nur einer der beiden hat Substanz");
+    assert.strictEqual(crossings[0].youngestMinutes, 8);
+    assert.strictEqual(crossings[0].examples[0].level, "substanz", "der mit Substanz muss vorne stehen");
+  });
+
+  await check("die Aussenwelt beruehrt die Stichwort-Felder nicht", () => {
+    // Beide Systeme laufen ueber dieselben Coins. Wuerden sie sich das
+    // gleiche Feld teilen, ueberschriebe eins das andere.
+    const coin = { address: "a", symbol: "RACC", name: "Raccoon", ageMinutes: 10, volumeH1: 140000,
+      liquidityUsd: 95000, organicShareH1: 0.42, holderCount: 1400, topFlags: [] };
+    ww.scan([coin], ["raccoon"]);
+    bz.crossWithCoins([coin], [{ term: "raccoon", sources: ["news"], traffic: 0 }]);
+    assert.strictEqual(coin.watchWord, "raccoon");
+    assert.strictEqual(coin.buzzWord, "raccoon");
+    assert.strictEqual(coin.watchLevel, "substanz");
+    assert.strictEqual(coin.buzzLevel, "substanz");
+  });
+
   console.log(failures === 0 ? "\nAlle Tests bestanden.\n" : "\n" + failures + " Test(s) fehlgeschlagen.\n");
   process.exit(failures === 0 ? 0 : 1);
 }
