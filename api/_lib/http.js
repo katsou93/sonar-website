@@ -84,6 +84,30 @@ async function getJson(url, opts = {}) {
   throw new SourceError(source, (lastError && lastError.message) || "unbekannter Fehler");
 }
 
+/** Wie getJson, nur fuer RSS und andere Textformate. */
+async function getText(url, opts = {}) {
+  const timeoutMs = opts.timeoutMs || 8000;
+  const source = opts.source || new URL(url).hostname;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: Object.assign(
+        {
+          accept: "application/rss+xml, application/xml, text/xml, text/html;q=0.8",
+          "user-agent": "sonar/0.1 (+https://sonar-website-chi.vercel.app)",
+        },
+        opts.headers || {},
+      ),
+    });
+    if (!res.ok) throw new SourceError(source, "HTTP " + res.status, res.status);
+    return await res.text();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function postJson(url, body, opts = {}) {
   const timeoutMs = opts.timeoutMs || 8000;
   const source = opts.source || new URL(url).hostname;
@@ -127,4 +151,4 @@ function resetCache() {
   cache.clear();
 }
 
-module.exports = { cached, getJson, postJson, mapLimit, sleep, SourceError, resetCache };
+module.exports = { cached, getJson, getText, postJson, mapLimit, sleep, SourceError, resetCache };

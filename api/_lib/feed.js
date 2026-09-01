@@ -22,6 +22,7 @@ const jup = require("./jupiter");
 const ds = require("./dexscreener");
 const narrative = require("./narrative");
 const watch = require("./watchwords");
+const buzz = require("./buzz");
 const { evaluate } = require("./score");
 
 const DEFAULT_FILTERS = {
@@ -36,6 +37,7 @@ const DEFAULT_FILTERS = {
   minScore: 0,
   sector: "",
   words: null,
+  buzz: false,
   sort: "heat",
   limit: 60,
 };
@@ -61,6 +63,7 @@ function parseFilters(query) {
     // null = die mitgelieferte Liste nehmen. Ein leerer String heisst
     // ausdruecklich "keine Stichworte" und schaltet die Wache ab.
     words: typeof q.words === "string" ? q.words.slice(0, 400) : DEFAULT_FILTERS.words,
+    buzz: q.buzz === "1" || q.buzz === "true",
     sort: ["heat", "new", "volume", "score", "organic", "holders", "early", "surge", "sector"].indexOf(q.sort) !== -1 ? q.sort : DEFAULT_FILTERS.sort,
     limit: Math.min(200, Math.max(1, num(q.limit, DEFAULT_FILTERS.limit))),
   };
@@ -277,6 +280,11 @@ async function buildFeed(query) {
   const warnings = [];
 
   // Beide Entdeckungswege gleichzeitig starten.
+  // Die Aussenwelt frueh anstossen: sie laeuft dann parallel zur Entdeckung
+  // und kostet am Ende praktisch keine Zeit. Faellt sie aus, faellt nur sie
+  // aus - deshalb hier schon der catch.
+  const buzzPromise = filters.buzz ? buzz.fetchBuzz().catch(() => null) : null;
+
   const [discovered, dexAddresses] = await Promise.all([jup.discover(), dexCandidates()]);
   const items = discovered.items.slice();
   const known = new Set(items.map((i) => i.address));
@@ -334,6 +342,30 @@ async function buildFeed(query) {
   // noch niemand aufgeschrieben hat, weil sie erst heute entstanden sind.
   const waves = narrative.discoverWaves(scored);
 
+  // Die Kreuzung von draussen und Kette. Erst hier, weil dafuer beides
+  // fertig sein muss.
+  let outside = null;
+  if (buzzPromise) {
+    const b = await buzzPromise;
+    if (b) {
+      outside = {
+        terms: b.terms.slice(0, 40),
+        sources: b.sources,
+        sourcesOk: b.sourcesOk,
+        sourcesTotal: b.sourcesTotal,
+        fetchedAt: b.fetchedAt,
+        crossings: buzz.crossWithCoins(scored, b.terms).slice(0, 8),
+      };
+      if (b.sourcesOk === 0) warnings.push("Keine der Aussenwelt-Quellen hat geantwortet - Trends und Schlagzeilen fehlen gerade.");
+      else if (b.sourcesOk < b.sourcesTotal) {
+        warnings.push("Nur " + b.sourcesOk + " von " + b.sourcesTotal + " Aussenwelt-Quellen haben geantwortet.");
+      }
+    } else {
+      outside = { terms: [], sources: {}, sourcesOk: 0, sourcesTotal: 0, crossings: [], error: "Aussenwelt nicht erreichbar" };
+      warnings.push("Die Aussenwelt-Quellen sind gerade nicht erreichbar.");
+    }
+  }
+
   const filtered = scored.filter((it) => {
     if ((it.marketCap || 0) < filters.minMarketCapUsd) return false;
     if ((it.liquidityUsd || 0) < filters.minLiquidityUsd) return false;
@@ -375,6 +407,7 @@ async function buildFeed(query) {
     items: filtered.slice(0, filters.limit),
     sectors: themes.sectors.slice(0, 8),
     waves: waves.slice(0, 6),
+    outside: outside,
     watch: {
       words: watched.words,
       substance: watched.substance.slice(0, 8),
