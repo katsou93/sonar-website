@@ -49,8 +49,25 @@ module.exports = async function handler(req, res) {
       limit: TELEGRAM_LIMIT,
     });
 
-    const hits = feed.items;
-    if (dryRun) return send(res, 200, { ok: true, dryRun: true, hits: hits });
+    // Stichwort-Treffer kommen zusaetzlich dazu - aber nur die mit
+    // Substanz, und nur so junge, dass sie im Zeitfenster dieses Laufs
+    // zum ersten Mal auftauchen. Damit gilt fuer sie dieselbe
+    // Entdopplungsregel wie fuer alles andere: genau ein Ping pro Coin.
+    const known = new Set(feed.items.map((i) => i.address));
+    const watchHits = ((feed.watch && feed.watch.substance) || []).filter(
+      (i) => !known.has(i.address) && i.ageMinutes != null && i.ageMinutes <= windowMinutes,
+    );
+
+    const hits = feed.items.concat(watchHits).slice(0, TELEGRAM_LIMIT);
+    if (dryRun) {
+      return send(res, 200, {
+        ok: true,
+        dryRun: true,
+        hits: hits,
+        words: (feed.watch && feed.watch.words) || [],
+        waves: (feed.waves || []).slice(0, 3),
+      });
+    }
 
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -70,6 +87,7 @@ module.exports = async function handler(req, res) {
 };
 
 function formatMessage(item) {
+  const flag = item.watchWord ? "\u{1F514} <b>Stichwort: " + escapeHtml(item.watchWord) + "</b>\n" : "";
   const money = (n) => (n == null ? "?" : n >= 1e6 ? "$" + (n / 1e6).toFixed(1) + "M" : "$" + Math.round(n / 100) / 10 + "k");
   const lines = [
     "<b>" + escapeHtml(item.symbol || "?") + "</b> — " + escapeHtml(item.name || "") + "  <b>" + item.score + "/100</b>",
@@ -83,7 +101,7 @@ function formatMessage(item) {
   }
   lines.push('<a href="https://pump.fun/coin/' + item.address + '">pump.fun</a> · <a href="' + item.dexUrl + '">Chart</a>');
   lines.push("<code>" + item.address + "</code>");
-  return lines.join("\n");
+  return flag + lines.join("\n");
 }
 
 function escapeHtml(text) {
