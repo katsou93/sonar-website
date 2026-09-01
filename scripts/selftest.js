@@ -643,6 +643,29 @@ async function main() {
     assert.strictEqual(nar.discoverWaves([mk("A", "Raccoon One"), mk("B", "Raccoon Two")]).length, 0);
   });
 
+  await check("eine Mint-Farm wird erkannt und abgewertet", () => {
+    // Live beobachtet: drei Coins "leagle", alle exakt +0%, alle drei
+    // Minuten alt. Ein Bot, kein Thema.
+    const klon = (i) => ({ address: "k" + i, symbol: "leagle", name: "leagle", ageMinutes: 3, priceChangeH1: 0, volumeH1: 30 });
+    const wave = nar.discoverWaves([klon(1), klon(2), klon(3)])[0];
+    assert.strictEqual(wave.farmSuspect, true);
+    assert.ok(wave.strength < 25, "Farm haette abgewertet werden muessen: " + wave.strength);
+  });
+
+  await check("eine echte Welle wird NICHT als Farm abgetan", () => {
+    const mk = (i, chg, vol) => ({ address: "c" + i, symbol: "CRIME" + i, name: "Crime " + i, ageMinutes: 2, priceChangeH1: chg, volumeH1: vol, volumeSurge: 2 });
+    const wave = nar.discoverWaves([mk(1, 149, 40000), mk(2, 285, 90000), mk(3, 28, 20000)])[0];
+    assert.strictEqual(wave.farmSuspect, false);
+    assert.ok(wave.strength >= 55, "echte Welle zu schwach: " + wave.strength);
+  });
+
+  await check("ein einzelner echter Coin rettet eine Farm nicht", () => {
+    const echt = { address: "e", symbol: "CRIME", name: "Crime Boss", ageMinutes: 2, priceChangeH1: 149, volumeH1: 40000, volumeSurge: 3 };
+    const klon = (i) => ({ address: "f" + i, symbol: "CR" + i, name: "Crime Clone", ageMinutes: 2, priceChangeH1: 0, volumeH1: 5 });
+    const wave = nar.discoverWaves([echt, klon(1), klon(2), klon(3)])[0];
+    assert.strictEqual(wave.farmSuspect, true, "drei von vier tot - das ist eine Farm");
+  });
+
   console.log("\nStichwort-Wache");
   const ww = require("../api/_lib/watchwords");
 
