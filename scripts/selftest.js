@@ -607,6 +607,93 @@ async function main() {
     assert.deepStrictEqual(nar.tokenize("dogWifHat"), ["dog", "wif", "hat"]);
   });
 
+  console.log("\nWortwellen");
+  await check("fuenf frische Coins mit demselben Wort ergeben eine Welle", () => {
+    const mk = (sym, name, age, chg) => ({ address: sym, symbol: sym, name: name, ageMinutes: age, priceChangeH1: chg, volumeH1: 30000, volumeSurge: 2 });
+    const waves = nar.discoverWaves([
+      mk("JIMO", "Jimothy Raccoon", 40, 60), mk("RACC", "Raccoon Seattle", 90, 35),
+      mk("JIM2", "jimothy the raccoon", 25, 120), mk("SPIN", "Short Spine Raccoon", 60, 20),
+      mk("TRSH", "Trash Panda Raccoon", 120, -5),
+    ]);
+    assert.strictEqual(waves[0].word, "raccoon");
+    assert.strictEqual(waves[0].coins, 5);
+    assert.ok(waves[0].strength >= 55, "zu schwach bewertet: " + waves[0].strength);
+  });
+
+  await check("dieselbe Welle unter uralten Coins ist viel schwaecher", () => {
+    const mk = (sym, name) => ({ address: sym, symbol: sym, name: name, ageMinutes: 60000, priceChangeH1: 1, volumeH1: 30000, volumeSurge: 1 });
+    const waves = nar.discoverWaves([
+      mk("A", "Raccoon One"), mk("B", "Raccoon Two"), mk("C", "Raccoon Three"),
+      mk("D", "Raccoon Four"), mk("E", "Raccoon Five"),
+    ]);
+    assert.ok(waves[0].strength < 55, "alte Coins haetten keine starke Welle sein duerfen: " + waves[0].strength);
+  });
+
+  await check("Fuellwoerter bilden keine Welle", () => {
+    const mk = (sym, name) => ({ address: sym, symbol: sym, name: name, ageMinutes: 30, priceChangeH1: 30, volumeH1: 10000 });
+    const waves = nar.discoverWaves([
+      mk("A", "Alpha Coin Token"), mk("B", "Beta Coin Token"), mk("C", "Gamma Coin Token"),
+      mk("D", "Delta Coin Token"),
+    ]);
+    assert.strictEqual(waves.length, 0, "gefunden: " + waves.map((w) => w.word).join(","));
+  });
+
+  await check("zwei Coins sind noch keine Welle", () => {
+    const mk = (sym, name) => ({ address: sym, symbol: sym, name: name, ageMinutes: 20, priceChangeH1: 50, volumeH1: 10000 });
+    assert.strictEqual(nar.discoverWaves([mk("A", "Raccoon One"), mk("B", "Raccoon Two")]).length, 0);
+  });
+
+  console.log("\nStichwort-Wache");
+  const ww = require("../api/_lib/watchwords");
+
+  await check("kurze Stichworte treffen nur als ganzes Wort", () => {
+    assert.strictEqual(ww.matchWord({ symbol: "PAPER", name: "Paper Hands" }, ["ape"]), null);
+    assert.strictEqual(ww.matchWord({ symbol: "APE", name: "Ape Strong" }, ["ape"]), "ape");
+  });
+
+  await check("lange Stichworte treffen auch mitten im Namen", () => {
+    assert.strictEqual(ww.matchWord({ symbol: "JIMO", name: "JimothyRaccoonCoin" }, ["raccoon"]), "raccoon");
+  });
+
+  await check("zu kurze oder leere Stichworte fliegen raus", () => {
+    assert.deepStrictEqual(ww.parseWords("ai, x, , raccoon, RACCOON, hormuz"), ["raccoon", "hormuz"]);
+  });
+
+  await check("ein Betrugs-Coin mit passendem Namen kommt nicht in Stufe 2", () => {
+    const res = ww.scan([{
+      address: "scam", symbol: "RACCOON", name: "Jimothy Raccoon",
+      liquidityUsd: 400, volumeH1: 900, organicShareH1: 0, holderCount: 12,
+      mintAuthorityActive: true, topFlags: [],
+    }], ["raccoon"]);
+    assert.strictEqual(res.substance.length, 0, "Betrugs-Coin haette Alarm ausgeloest");
+    assert.strictEqual(res.seen.length, 1);
+    assert.ok(res.seen[0].watchReasons.length >= 3);
+  });
+
+  await check("ein Coin mit Substanz kommt in Stufe 2", () => {
+    const res = ww.scan([{
+      address: "gut", symbol: "RACC", name: "Raccoon Seattle",
+      liquidityUsd: 95000, volumeH1: 140000, organicShareH1: 0.42, holderCount: 1400,
+      mintAuthorityActive: false, freezeAuthorityActive: false, topFlags: [],
+    }], ["raccoon"]);
+    assert.strictEqual(res.substance.length, 1);
+    assert.strictEqual(res.substance[0].watchLevel, "substanz");
+  });
+
+  await check("unbekannte Echtheit reicht nicht fuer Stufe 2", () => {
+    const res = ww.scan([{
+      address: "unklar", symbol: "RACC", name: "Raccoon", liquidityUsd: 95000,
+      volumeH1: 140000, organicShareH1: null, holderCount: 900, topFlags: [],
+    }], ["raccoon"]);
+    assert.strictEqual(res.substance.length, 0);
+  });
+
+  await check("leere Wortliste schaltet die Wache ab", () => {
+    const res = ww.scan([{ address: "x", symbol: "RACC", name: "Raccoon", liquidityUsd: 95000, volumeH1: 140000, organicShareH1: 0.4, holderCount: 900, topFlags: [] }], "");
+    assert.strictEqual(res.substance.length, 0);
+    assert.strictEqual(res.seen.length, 0);
+  });
+
   console.log(failures === 0 ? "\nAlle Tests bestanden.\n" : "\n" + failures + " Test(s) fehlgeschlagen.\n");
   process.exit(failures === 0 ? 0 : 1);
 }
