@@ -851,10 +851,13 @@ function sourceBar(o){
 }
 
 function waveRow(w){
-  var hot = w.strength >= 55;
+  var hot = w.strength >= 55 && !w.farmSuspect;
   var bits = [w.coins + " Coins teilen das Wort", w.up + " davon im Plus"];
   if(w.medianAgeMinutes != null) bits.push("im Mittel " + ageShort(w.medianAgeMinutes));
   if(w.known) bits.push("gehört zum Lexikon");
+  // Ein Bot, der denselben Coin mehrfach mintet, sieht aus wie eine Welle.
+  // Verraeterisch: fast alle Mitglieder ohne Umsatz und ohne Kursbewegung.
+  if(w.farmSuspect) bits.push('<b style="color:var(--yel)">Verdacht: dieselbe Hand, kein Thema</b>');
   return '<div class="wave'+(hot?" hot":"")+'">'+
     '<div class="str">'+w.strength+'</div>'+
     '<div style="min-width:0"><div class="ww">'+esc(w.word)+'</div>'+
