@@ -47,6 +47,7 @@ module.exports = async function handler(req, res) {
       socials: (req.query && req.query.socials) || "1",
       sort: "early",
       limit: TELEGRAM_LIMIT,
+      buzz: "1",
     });
 
     // Stichwort-Treffer kommen zusaetzlich dazu - aber nur die mit
@@ -58,7 +59,26 @@ module.exports = async function handler(req, res) {
       (i) => !known.has(i.address) && i.ageMinutes != null && i.ageMinutes <= windowMinutes,
     );
 
-    const hits = feed.items.concat(watchHits).slice(0, TELEGRAM_LIMIT);
+    // Die wertvollste Meldung ueberhaupt: ein Begriff, der GERADE draussen
+    // trendet, taucht als junger Coin mit Substanz auf. Deshalb steht sie
+    // vorn - vor den normalen Fruehtreffern.
+    const crossHits = [];
+    for (const cross of (feed.outside && feed.outside.crossings) || []) {
+      if (!cross.withSubstance) continue;
+      for (const example of cross.examples) {
+        if (example.level !== "substanz") continue;
+        const full = ((feed.watch && feed.watch.substance) || []).concat(feed.items).find((i) => i.address === example.address);
+        const item = full || null;
+        if (!item || known.has(item.address)) continue;
+        if (item.ageMinutes == null || item.ageMinutes > windowMinutes) continue;
+        known.add(item.address);
+        item.buzzTerm = cross.term;
+        item.buzzSources = cross.sources;
+        crossHits.push(item);
+      }
+    }
+
+    const hits = crossHits.concat(feed.items, watchHits).slice(0, TELEGRAM_LIMIT);
     if (dryRun) {
       return send(res, 200, {
         ok: true,
@@ -66,6 +86,8 @@ module.exports = async function handler(req, res) {
         hits: hits,
         words: (feed.watch && feed.watch.words) || [],
         waves: (feed.waves || []).slice(0, 3),
+        crossings: (feed.outside && feed.outside.crossings) || [],
+        outsideSources: (feed.outside && feed.outside.sources) || {},
       });
     }
 
@@ -87,7 +109,11 @@ module.exports = async function handler(req, res) {
 };
 
 function formatMessage(item) {
-  const flag = item.watchWord ? "\u{1F514} <b>Stichwort: " + escapeHtml(item.watchWord) + "</b>\n" : "";
+  const flag = item.buzzTerm
+    ? "\u{1F310} <b>Trend draussen: " + escapeHtml(item.buzzTerm) + "</b>\n"
+    : item.watchWord
+      ? "\u{1F514} <b>Stichwort: " + escapeHtml(item.watchWord) + "</b>\n"
+      : "";
   const money = (n) => (n == null ? "?" : n >= 1e6 ? "$" + (n / 1e6).toFixed(1) + "M" : "$" + Math.round(n / 100) / 10 + "k");
   const lines = [
     "<b>" + escapeHtml(item.symbol || "?") + "</b> — " + escapeHtml(item.name || "") + "  <b>" + item.score + "/100</b>",
