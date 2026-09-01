@@ -436,6 +436,21 @@ function discoverWaves(items, options) {
     if (members.length < WAVE_MIN_COINS) continue;
 
     const stats = heatOfMembers(members);
+
+    // Farm-Verdacht.
+    //
+    // Live beobachtet: drei Coins namens "leagle", alle exakt +0%, alle
+    // drei Minuten alt. Das ist kein Thema, das ist ein Bot, der denselben
+    // Token mehrfach mintet, um Suchlisten zu fluten. Erkennbar daran,
+    // dass die Mitglieder tot sind: kein Umsatz, keine Kursbewegung.
+    //
+    // Eine echte Welle hat immer ein paar Mitglieder, in denen wirklich
+    // gehandelt wird - selbst wenn der Rest Schrott ist.
+    const dead = members.filter(
+      (m) => (m.volumeH1 || 0) < 1000 && Math.abs(m.priceChangeH1 || 0) < 2,
+    ).length;
+    const farmSuspect = dead / members.length >= 0.7;
+
     const ages = members.map((m) => (m.ageMinutes == null ? null : m.ageMinutes)).filter((a) => a != null);
     const medianAge = ages.length ? median(ages) : null;
     const fresh = medianAge == null ? 0.5 : medianAge < 360 ? 1 : medianAge < 1440 ? 0.8 : medianAge < 10080 ? 0.5 : 0.25;
@@ -443,7 +458,10 @@ function discoverWaves(items, options) {
     // Staerke: wie viele Coins teilen das Wort, wie frisch sind sie, und
     // bewegt sich die Gruppe ueberhaupt. Alles drei muss stimmen.
     const size = Math.min(1, (members.length - 2) / 6);
-    const strength = Math.round((size * 45 + fresh * 30 + (stats.heat / 100) * 25));
+    const raw = size * 45 + fresh * 30 + (stats.heat / 100) * 25;
+    // Eine Farm wird nicht versteckt, aber deutlich abgewertet - sie soll
+    // unter den echten Wellen stehen, nicht neben ihnen.
+    const strength = Math.round(farmSuspect ? raw * 0.3 : raw);
 
     waves.push({
       word: word,
@@ -453,6 +471,8 @@ function discoverWaves(items, options) {
       medianAgeMinutes: medianAge == null ? null : Math.round(medianAge),
       volumeH1: Math.round(stats.volumeH1),
       strength: Math.max(0, Math.min(100, strength)),
+      farmSuspect: farmSuspect,
+      deadShare: Math.round((dead / members.length) * 100) / 100,
       known: KNOWN.has(word),
       examples: members
         .slice()
