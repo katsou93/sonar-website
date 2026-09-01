@@ -857,11 +857,14 @@ function waveRow(w){
   if(w.known) bits.push("gehört zum Lexikon");
   // Ein Bot, der denselben Coin mehrfach mintet, sieht aus wie eine Welle.
   // Verraeterisch: fast alle Mitglieder ohne Umsatz und ohne Kursbewegung.
-  if(w.farmSuspect) bits.push('<b style="color:var(--yel)">Verdacht: dieselbe Hand, kein Thema</b>');
+  // Achtung: bits wird escaped, die Warnung muss deshalb daneben stehen.
+  var warn = w.farmSuspect
+    ? ' · <b style="color:var(--yel)">Verdacht: dieselbe Hand, kein Thema</b>'
+    : '';
   return '<div class="wave'+(hot?" hot":"")+'">'+
     '<div class="str">'+w.strength+'</div>'+
     '<div style="min-width:0"><div class="ww">'+esc(w.word)+'</div>'+
-      '<div class="wm">'+esc(bits.join(" · "))+'</div></div>'+
+      '<div class="wm">'+esc(bits.join(" · "))+warn+'</div></div>'+
     '<div class="wact">'+w.examples.slice(0,3).map(function(x){
       return '<button class="btn btn-g btn-sm" data-addr="'+esc(x.address)+'">'+esc(x.symbol||"?")+' '+pctTxt(x.priceChangeH1,0)+'</button>';
     }).join("")+
