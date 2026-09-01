@@ -221,6 +221,23 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
 .wseen:last-child{border-bottom:0}
 .wseen b{color:var(--mu);font-weight:600;font-family:var(--mono);font-size:12px}
 .wbox{border:1px solid var(--border);border-radius:11px;background:var(--panel);overflow:hidden}
+.cross{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;padding:14px 16px;
+  border:1px solid var(--border);border-radius:11px;background:var(--panel);margin-bottom:8px}
+.cross.live{border-color:rgba(20,241,149,.4);background:rgba(20,241,149,.06)}
+.cross .ct{font-size:15px;font-weight:650;color:var(--tx);letter-spacing:-.01em}
+.cross .cs{font-size:12px;color:var(--mu2);margin-top:4px;line-height:1.5}
+.cross .src{display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.05em;text-transform:uppercase;
+  padding:2px 6px;border-radius:4px;background:rgba(255,255,255,.055);color:var(--mu2);margin-right:4px}
+.cross .cact{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:340px}
+.srcbar{display:flex;gap:7px;flex-wrap:wrap;padding:0 2px 14px;font-size:11.5px;color:var(--mu2)}
+.srcbar .s{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:11px}
+.srcbar .dot{width:6px;height:6px;border-radius:50%;background:var(--red);display:inline-block}
+.srcbar .s.ok .dot{background:var(--grn)}
+.terms{display:flex;gap:6px;flex-wrap:wrap;padding:2px 2px 0}
+.term{font-family:var(--mono);font-size:11.5px;padding:4px 9px;border-radius:6px;border:1px solid var(--border);
+  color:var(--mu2);background:rgba(255,255,255,.02);cursor:pointer}
+.term:hover{color:var(--grn);border-color:rgba(20,241,149,.35)}
+@media(max-width:640px){.cross{grid-template-columns:1fr}.cross .cact{justify-content:flex-start;max-width:none}}
 @media(max-width:640px){.wave{grid-template-columns:44px 1fr}.wave .wact{grid-column:1/-1;justify-content:flex-start}}
 .lagg{display:flex;gap:8px;align-items:flex-start;margin:10px 0 0;padding:9px 12px;border-radius:9px;
   border:1px solid rgba(255,193,7,.22);background:rgba(255,193,7,.05);font-size:12.5px;color:var(--mu);line-height:1.5}
@@ -798,6 +815,41 @@ function ageShort(min){
   return Math.round(min/1440) + " Tage alt";
 }
 
+var SRC_LABEL = { trends_us:"Trends US", trends_de:"Trends DE", news:"News", wiki:"Wikipedia" };
+
+/**
+ * Die Kreuzung: ein Begriff, der DRAUSSEN trendet und GLEICHZEITIG auf
+ * der Kette auftaucht. Ein Trend ohne Coins ist eine Nachricht, ein Coin
+ * ohne Trend ist Rauschen - erst beides zusammen ist ein Hinweis.
+ */
+function crossRow(c){
+  var live = c.withSubstance > 0;
+  var srcs = (c.sources||[]).map(function(k){ return '<span class="src">'+esc(SRC_LABEL[k]||k)+'</span>'; }).join("");
+  var bits = [c.coins + (c.coins===1?" Coin":" Coins") + " auf der Kette"];
+  if(c.withSubstance) bits.push("<b style=\"color:var(--grn)\">"+c.withSubstance+" davon mit Substanz</b>");
+  else bits.push("keiner mit Substanz");
+  if(c.youngestMinutes != null) bits.push("jüngster " + ageShort(c.youngestMinutes));
+  if(c.traffic) bits.push(Math.round(c.traffic/1000) + "k Suchen");
+  return '<div class="cross'+(live?" live":"")+'">'+
+    '<div style="min-width:0"><div class="ct">'+esc(c.term)+'</div>'+
+      '<div class="cs">'+srcs+bits.join(" · ")+'</div></div>'+
+    '<div class="cact">'+(c.examples||[]).slice(0,3).map(function(x){
+      return '<button class="btn '+(x.level==="substanz"?"btn-p":"btn-g")+' btn-sm" data-addr="'+esc(x.address)+'">'+
+        esc(x.symbol||"?")+' '+pctTxt(x.priceChangeH1,0)+'</button>';
+    }).join("")+
+    '<button class="btn btn-g btn-sm" data-addword="'+esc(c.term)+'">merken</button></div>'+
+  '</div>';
+}
+
+function sourceBar(o){
+  var keys = Object.keys(o.sources||{});
+  if(!keys.length) return "";
+  return '<div class="srcbar">'+keys.map(function(k){
+    var s = o.sources[k];
+    return '<span class="s'+(s.ok?" ok":"")+'"><span class="dot"></span>'+esc(s.label)+(s.ok?" "+s.count:" stumm")+'</span>';
+  }).join("")+'</div>';
+}
+
 function waveRow(w){
   var hot = w.strength >= 55;
   var bits = [w.coins + " Coins teilen das Wort", w.up + " davon im Plus"];
@@ -839,7 +891,7 @@ function loadWache(){
   var list = wLoadWords();
   // limit=1: Wellen und Treffer werden serverseitig VOR den Filtern
   // berechnet, wir brauchen die gefilterte Coin-Liste hier gar nicht.
-  var qs = "limit=1&minAge=0&minLiquidity=0&minVolumeH1=0";
+  var qs = "limit=1&minAge=0&minLiquidity=0&minVolumeH1=0&buzz=1";
   if(list !== null) qs += "&words=" + encodeURIComponent(list.join(","));
 
   apiFetch("/api/feed?"+qs)
@@ -852,6 +904,26 @@ function loadWache(){
       var sub = (j.watch && j.watch.substance) || [];
       var seen = (j.watch && j.watch.seen) || [];
       var html = "";
+      var out2 = j.outside;
+
+      if(out2){
+        html += '<div class="wsec"><h3>Draußen — Trends, Schlagzeilen, Wikipedia</h3>'+
+          '<p class="sub">Google Trends (US und DE), Google News und die meistgelesenen Wikipedia-Artikel. '+
+          'Das ist die einzige Stelle, an der die App aus der Kette heraussieht. '+
+          '<b>Wichtig ist nur die Kreuzung</b>: ein Begriff, der draußen läuft <i>und</i> auf der Kette als Coin auftaucht. '+
+          'Trends allein sind Wetter und Sportergebnisse.</p>'+
+          sourceBar(out2)+
+          (out2.crossings && out2.crossings.length
+            ? out2.crossings.map(crossRow).join("")
+            : '<div class="empty">Kein Begriff von draußen taucht gerade als Coin auf.<br><span class="mu2">Der Normalfall — die meisten Schlagzeilen erzeugen nie einen Coin.</span></div>')+
+          (out2.terms && out2.terms.length
+            ? '<p class="sub" style="margin:14px 0 6px">Was sonst noch läuft — anklicken macht daraus ein Stichwort:</p>'+
+              '<div class="terms">'+out2.terms.slice(0,24).map(function(t){
+                return '<button class="term" data-addword="'+esc(t.term)+'">'+esc(t.term)+'</button>';
+              }).join("")+'</div>'
+            : "")+
+          '</div>';
+      }
 
       html += '<div class="wsec"><h3>Wortwellen — was gerade von selbst auffällt</h3>'+
         '<p class="sub">Die App zählt, welche Worte auffällig oft in Coin-Namen vorkommen. Das findet Themen, die in keiner Liste stehen — weil sie heute erst entstanden sind. Je jünger die betroffenen Coins, desto höher die Zahl links.</p>'+
