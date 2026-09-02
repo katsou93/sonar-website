@@ -270,6 +270,14 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
 .kind.streuer{background:rgba(255,255,255,.05);color:var(--mu2)}
 .scout.streuer{opacity:.62}
 .scout.position{border-color:rgba(20,241,149,.32);background:rgba(20,241,149,.04)}
+.numin{width:48px;padding:4px 7px;border-radius:7px;border:1px solid var(--border);background:rgba(255,255,255,.03);
+  color:var(--tx);font-family:var(--mono);font-size:12px;outline:none;text-align:center}
+.numin.wide{width:72px}
+.numin:focus{border-color:rgba(20,241,149,.4)}
+.cl.alarm{border-color:var(--grn);box-shadow:0 0 0 1px rgba(20,241,149,.25)}
+.pulse{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--mu2);font-family:var(--mono)}
+.pulse i{width:6px;height:6px;border-radius:50%;background:var(--grn);display:inline-block;animation:blink 2s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
 @media(max-width:640px){.scout{grid-template-columns:auto 1fr}}
 @media(max-width:640px){.move,.cl{grid-template-columns:1fr;gap:6px}.move .amt,.move .sub{text-align:left}}
 .terms{display:flex;gap:6px;flex-wrap:wrap;padding:2px 2px 0}
@@ -429,12 +437,16 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
       <button class="btn btn-g btn-sm" id="s-addbtn">Verfolgen</button>
       <button class="btn btn-p btn-sm" id="s-scout">Kundschafter suchen</button>
       <div class="hspace" style="flex:1"></div>
+      <label class="autolabel">Alarm ab <input class="numin" id="s-min" type="number" min="2" max="6" value="2"> Wallets</label>
+      <label class="autolabel">max <input class="numin wide" id="s-mcap" type="number" min="0" step="5000" value="0"> $ MCap</label>
       <label class="autolabel"><input type="checkbox" id="s-buys" checked> nur Käufe</label>
       <label class="autolabel"><input type="checkbox" id="s-notify"> Benachrichtigung</label>
-      <label class="autolabel"><input type="checkbox" id="s-auto"> alle 3 min</label>
+      <label class="autolabel"><input type="checkbox" id="s-auto"> alle 15 s</label>
+      <button class="btn btn-g btn-sm" id="s-test">Test</button>
       <button class="btn btn-g btn-sm" id="s-reload">Jetzt prüfen</button>
     </div>
     <div id="s-wallets" class="wal"></div>
+    <div style="padding:0 2px 10px"><span class="pulse" id="s-pulse"></span></div>
     <div id="s-out"></div>
     <p class="hint" style="margin-top:20px"><b style="color:var(--mu)">Warum Wallets und nicht X-Accounts:</b> Ein Trader postet <i>nachdem</i> er gekauft hat — oder erst, wenn er Abnehmer sucht. Die Wallet zeigt den Kauf in dem Moment, in dem er passiert, in voller Höhe, ohne Erzählung. Das ist früher als jeder Tweet und lässt sich nicht fälschen.<br><br><b style="color:var(--yel)">Und der ehrliche Teil:</b> Wer kopiert, ist immer hinten. Er ist vor dir drin, und wenn er verkauft, erfährst du es <i>danach</i>. Manche Wallets sehen nur deshalb genial aus, weil sie noch früher informiert waren als der, den du beobachtest. Jeder Kauf hier bekommt deshalb sofort unsere eigene Prüfung daneben — er kauft nicht für dich.</p>
   </section>
@@ -904,12 +916,15 @@ function moveRow(m){
 }
 
 function clusterRow(c){
-  return '<div class="cl" data-addr="'+esc(c.mint)+'">'+
+  var trifft = matchesAlarm(c, alarmRule());
+  return '<div class="cl'+(trifft?" alarm":"")+'" data-addr="'+esc(c.mint)+'">'+
     '<div class="n">'+c.wallets+'</div>'+
     '<div style="min-width:0"><div class="sym" style="font-size:16px;font-weight:650;color:var(--tx)">'+esc(c.symbol||"?")+
       (c.score != null ? ' <span class="scorepill '+scoreColor(c.score,null)+'" style="margin-left:6px">'+c.score+'</span>' : '')+'</div>'+
-      '<div class="who" style="color:var(--mu)">'+c.wallets+' verschiedene Wallets, die du verfolgst, sind hier rein · '+
-      c.buys+' Käufe · '+c.solTotal+' SOL zusammen</div></div>'+
+      '<div class="who" style="color:var(--mu)">'+c.wallets+' verschiedene Wallets sind hier rein · '+
+      c.buys+' Käufe · '+c.solTotal+' SOL zusammen'+
+      (c.coin && c.coin.marketCap ? ' · MCap '+money(c.coin.marketCap) : '')+
+      (trifft?' · <b style="color:var(--grn)">trifft deine Alarmregel</b>':'')+'</div></div>'+
     '<div class="amt" style="color:var(--grn)">'+esc(whenTxt(c.lastAt))+'</div>'+
   '</div>';
 }
@@ -1027,6 +1042,10 @@ function loadScouts(){
       html += harvestBox();
       out.innerHTML = html;
 
+      // Adressen merken, damit der Puls auch ohne eigene Wallets laeuft.
+      sScoutAddrs = (j.scouts || []).slice(0, 4).map(function(x){ return x.wallet; });
+      clusterAlarm(j.clusters);
+
       out.querySelectorAll("[data-addr]").forEach(function(node){
         node.addEventListener("click", function(){
           document.querySelector('.tab[data-view="scanner"]').click();
@@ -1095,6 +1114,7 @@ function loadSpuren(){
       });
 
       sNotify(j.moves.filter(function(m){ return m.side === "kauf"; }));
+      clusterAlarm(j.clusters);
     })
     .catch(function(e){ if(e && e.locked) return; out.innerHTML = '<div class="err">Netzwerkfehler: '+esc(e.message)+'</div>'; });
 }
@@ -1109,6 +1129,91 @@ function loadSpuren(){
 function notifyWanted(){
   var a = el("w-notify"), b = el("s-notify");
   return !!((a && a.checked) || (b && b.checked));
+}
+
+/**
+ * Die Alarmregel: ab wie vielen Wallets im selben Coin, und bis zu
+ * welchem Marktwert?
+ *
+ * Ehrlich dazu: je strenger die Regel, desto seltener schlaegt sie an.
+ * "Drei Wallets unter 10k Marktwert" kann tagelang still bleiben - das
+ * ist dann kein Fehler, sondern die Aussage, dass es so etwas eben
+ * selten gibt.
+ */
+function alarmRule(){
+  var minW = Math.max(2, Math.min(6, parseInt(el("s-min").value, 10) || 2));
+  var maxM = Math.max(0, parseInt(el("s-mcap").value, 10) || 0);
+  return { minWallets: minW, maxMcap: maxM };
+}
+
+function matchesAlarm(c, rule){
+  if(c.wallets < rule.minWallets) return false;
+  if(rule.maxMcap > 0){
+    var mc = c.coin && c.coin.marketCap;
+    // Unbekannter Marktwert faellt durch: eine Obergrenze, die man nicht
+    // pruefen kann, ist keine.
+    if(mc == null || mc > rule.maxMcap) return false;
+  }
+  return true;
+}
+
+/** Zusammenlauf-Alarm - der eigentliche Grund fuer das ganze System. */
+function clusterAlarm(clusters){
+  if(!notifyWanted()) return;
+  if(!("Notification" in window) || Notification.permission !== "granted") return;
+  var rule = alarmRule();
+  (clusters||[]).filter(function(c){ return matchesAlarm(c, rule); }).forEach(function(c){
+    var key = "cl-" + c.mint + "-" + (c.lastAt || 0);
+    if(sKnown[key]) return;
+    sKnown[key] = Date.now();
+    try {
+      new Notification("SONAR 🚨 " + c.wallets + " Wallets: " + (c.symbol || "?"), {
+        body: c.buys + " Käufe · " + c.solTotal + " SOL zusammen" +
+              (c.coin && c.coin.marketCap ? " · MCap " + money(c.coin.marketCap) : "") +
+              (c.score != null ? " · unser Score " + c.score : ""),
+        tag: key,
+        requireInteraction: true
+      });
+    } catch(e){}
+  });
+  try { localStorage.setItem("sonar_moves_seen", JSON.stringify(sKnown)); } catch(e){}
+}
+
+/* ---- Der Puls: alle 15 Sekunden fragen, ob ueberhaupt etwas passiert ist ---- */
+
+var sPulseTimer = null, sPulseSeen = null, sScoutAddrs = [], sPulseBeats = 0;
+
+/**
+ * Nicht die teure Abfrage im 15-Sekunden-Takt, sondern nur die Frage
+ * "gibt es eine neue Transaktion?". Erst wenn ja, wird nachgeladen.
+ * Im Ruhezustand kostet das fast nichts.
+ */
+function sPulse(){
+  var own = sLoad().map(function(w){ return w.addr; });
+  var addrs = own.length ? own : sScoutAddrs;
+  if(!addrs.length) return;
+
+  apiFetch("/api/wallets?pulse=1&addrs="+encodeURIComponent(addrs.join(",")))
+    .then(function(j){
+      if(!j.ok || !j.wallets) return;
+      sPulseBeats++;
+      var erst = sPulseSeen === null;
+      if(erst) sPulseSeen = {};
+      var neu = false;
+      j.wallets.forEach(function(w){
+        (w.sigs||[]).forEach(function(sig){
+          if(sPulseSeen[sig.signature]) return;
+          sPulseSeen[sig.signature] = 1;
+          // Der erste Durchlauf lernt nur den Ist-Zustand - sonst gaebe
+          // es beim Einschalten sofort einen Schwall Falschalarme.
+          if(!erst) neu = true;
+        });
+      });
+      var mark = el("s-pulse");
+      if(mark) mark.innerHTML = '<i></i>Puls '+sPulseBeats+(neu?' · neue Bewegung':'');
+      if(neu) own.length ? loadSpuren() : loadScouts();
+    })
+    .catch(function(){});
 }
 
 /** Jede Transaktion nur einmal melden - Signaturen sind eindeutig. */
@@ -1151,10 +1256,41 @@ el("s-notify").addEventListener("change", function(){
 el("s-reload").addEventListener("click", loadSpuren);
 el("s-buys").addEventListener("change", loadSpuren);
 el("s-auto").addEventListener("change", function(){
+  if(sPulseTimer){ clearInterval(sPulseTimer); sPulseTimer = null; }
   if(sAutoTimer){ clearInterval(sAutoTimer); sAutoTimer = null; }
-  // Drei Minuten, nicht eine: jede Prüfung kostet pro Wallet einen
-  // Helius-Aufruf, und das Freikontingent soll den Monat halten.
-  if(this.checked) sAutoTimer = setInterval(loadSpuren, 180000);
+  if(!this.checked) return;
+  // Alle 15 Sekunden der billige Puls. Die teure Abfrage laeuft nur,
+  // wenn er etwas Neues meldet - plus einmal alle 10 Minuten als
+  // Sicherheitsnetz, falls eine Signatur durchrutscht.
+  sPulseSeen = null;
+  sPulse();
+  sPulseTimer = setInterval(sPulse, 15000);
+  sAutoTimer = setInterval(function(){ sLoad().length ? loadSpuren() : loadScouts(); }, 600000);
+});
+
+el("s-test").addEventListener("click", function(){
+  if(!("Notification" in window)){ alert("Dieser Browser kann keine Benachrichtigungen."); return; }
+  if(Notification.permission !== "granted"){
+    Notification.requestPermission().then(function(p){
+      if(p === "granted") new Notification("SONAR · Test", { body: "Läuft. Ab jetzt bekommst du Bescheid." });
+      else alert("Chrome hat Benachrichtigungen für diese Seite blockiert. Auf das Schloss-Symbol links in der Adresszeile klicken und erlauben.");
+    });
+    return;
+  }
+  var rule = alarmRule();
+  new Notification("SONAR 🚨 " + rule.minWallets + " Wallets: TESTCOIN", {
+    body: "So sieht der Alarm aus. Regel gerade: ab " + rule.minWallets + " Wallets" +
+          (rule.maxMcap ? ", nur unter " + money(rule.maxMcap) + " Marktwert" : ", ohne Marktwert-Grenze") + ".",
+    requireInteraction: true
+  });
+});
+["s-min","s-mcap"].forEach(function(id){
+  el(id).addEventListener("change", function(){
+    try { localStorage.setItem("sonar_opt_" + id, el(id).value); } catch(e){}
+  });
+  var saved = null;
+  try { saved = localStorage.getItem("sonar_opt_" + id); } catch(e){}
+  if(saved !== null) el(id).value = saved;
 });
 
 /* ---------- Wache: Stichworte und Wortwellen ---------- */
