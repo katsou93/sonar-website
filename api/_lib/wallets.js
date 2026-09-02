@@ -618,13 +618,18 @@ function ledgerFromSwaps(txs, wallet) {
   for (const tx of txs || []) {
     const move = buyFromSwap(tx, wallet);
     if (!move || !move.mint) continue;
-    const m = perMint.get(move.mint) || { mint: move.mint, symbol: move.symbol, tokIn: 0, tokOut: 0, solIn: 0, solOut: 0 };
+    const m = perMint.get(move.mint) ||
+      { mint: move.mint, symbol: move.symbol, tokIn: 0, tokOut: 0, solIn: 0, solOut: 0, ersterKauf: null, letzterVerkauf: null };
     if (move.side === "kauf") {
       m.tokIn += move.tokenAmount || 0;
       m.solIn += move.solAmount || 0;
+      // Wann ist er eingestiegen? Zusammen mit dem Ausstieg ergibt das
+      // die Haltedauer - und die ist die verraeterischste Zahl von allen.
+      if (move.timestamp && (!m.ersterKauf || move.timestamp < m.ersterKauf)) m.ersterKauf = move.timestamp;
     } else {
       m.tokOut += move.tokenAmount || 0;
       m.solOut += move.solAmount || 0;
+      if (move.timestamp && (!m.letzterVerkauf || move.timestamp > m.letzterVerkauf)) m.letzterVerkauf = move.timestamp;
     }
     if (!m.symbol && move.symbol) m.symbol = move.symbol;
     perMint.set(move.mint, m);
@@ -637,7 +642,9 @@ function ledgerFromSwaps(txs, wallet) {
     if (m.solIn <= 0 || m.tokIn <= 0) continue;
     const verkauftAnteil = m.tokOut / m.tokIn;
     if (verkauftAnteil < 0.8) { offen++; continue; }
-    zu.push({ mint: m.mint, symbol: m.symbol, x: m.solOut / m.solIn, solIn: m.solIn });
+    const haltMin = (m.ersterKauf && m.letzterVerkauf && m.letzterVerkauf > m.ersterKauf)
+      ? (m.letzterVerkauf - m.ersterKauf) / 60 : null;
+    zu.push({ mint: m.mint, symbol: m.symbol, x: m.solOut / m.solIn, solIn: m.solIn, haltMin: haltMin });
   }
 
   if (zu.length < BILANZ_MIN_TRADES) {
@@ -648,6 +655,20 @@ function ledgerFromSwaps(txs, wallet) {
   const xs = zu.map((t) => t.x).sort((a, b) => a - b);
   const mitte = Math.floor(xs.length / 2);
   const median = xs.length % 2 ? xs[mitte] : (xs[mitte - 1] + xs[mitte]) / 2;
+
+  // Wie lange haelt dieser Mensch? Die Zahl, die einen Kundschafter von
+  // einem Pump-and-Dump-Betreiber unterscheidet.
+  const halten = zu.map((t) => t.haltMin).filter((h) => h != null).sort((a, b) => a - b);
+  const hm = Math.floor(halten.length / 2);
+  const haltMedian = halten.length
+    ? Math.round((halten.length % 2 ? halten[hm] : (halten[hm - 1] + halten[hm]) / 2) * 10) / 10
+    : null;
+  const schnellAnteil = halten.length
+    ? Math.round((halten.filter((h) => h <= DUMP_MINUTEN).length / halten.length) * 100) / 100
+    : null;
+  const quoteZahl = Math.round((gewinne / zu.length) * 100);
+  const sechs = zu.filter((t) => t.x >= 6).length;
+  const muster = musterVon(quoteZahl, haltMedian, schnellAnteil, sechs);
 
   return {
     trades: zu.length,
@@ -660,7 +681,42 @@ function ledgerFromSwaps(txs, wallet) {
     // wie oft hat dieser Mensch eine Position wirklich versechsfacht
     // UND sie dann auch verkauft? Papiergewinne zaehlen hier nicht.
     sechsfach: zu.filter((t) => t.x >= 6).length,
+    haltMin: haltMedian,
+    schnellAnteil: schnellAnteil,
+    // Das Urteil, das vorher gefehlt hat.
+    muster: muster,
   };
+}
+
+/**
+ * Ist das ein Kundschafter - oder jemand, der dich als Ausstieg braucht?
+ *
+ * Der Unterschied ist mit blossem Auge nicht zu sehen, und genau das ist
+ * das Problem: eine Pump-and-Dump-Wallet sieht in JEDER Statistik
+ * grossartig aus. Hohe Trefferquote, gute Multiplikatoren, immer frueh
+ * dabei. Sie gewinnt ja auch - nur eben auf Kosten derer, die ihr
+ * folgen.
+ *
+ * Was sie verraet, ist die Uhr. Wer eine Position nach vier Minuten
+ * komplett aufloest, hat nicht an den Coin geglaubt. Er hat gekauft,
+ * gewartet bis genug Leute nachgezogen sind, und in deren Kaufdruck
+ * hinein verkauft. Wenn du seinem Kauf folgst, kaufst du ihm sein Paket
+ * ab, kurz bevor er es loswerden will - du bist nicht sein Nachahmer,
+ * du bist sein Abnehmer.
+ *
+ * Deshalb ist eine hohe Trefferquote OHNE Haltedauer wertlos als
+ * Empfehlung. Erst beides zusammen ergibt eine Aussage.
+ */
+const DUMP_MINUTEN = 20;
+
+function musterVon(quote, haltMin, schnellAnteil, sechsfach) {
+  if (haltMin == null) return "unklar";
+  if (schnellAnteil >= 0.6 && haltMin <= DUMP_MINUTEN) return "dumper";
+  if (haltMin <= 5) return "dumper";
+  if (quote != null && quote < 25) return "verlierer";
+  if (haltMin >= 60 && quote != null && quote >= 50) return "geduldig";
+  if (sechsfach >= 2) return "treffer";
+  return "normal";
 }
 
 /** Die Bilanz einer Wallet holen. Ein Helius-Aufruf, zwoelf Stunden gecacht. */
@@ -706,6 +762,8 @@ async function walletLedger(wallet, opts) {
 module.exports.ledgerFromSwaps = ledgerFromSwaps;
 module.exports.walletLedger = walletLedger;
 module.exports.BILANZ_MIN_TRADES = BILANZ_MIN_TRADES;
+module.exports.musterVon = musterVon;
+module.exports.DUMP_MINUTEN = DUMP_MINUTEN;
 
 const EINMAL_RANG = 15;
 const EINMAL_SOL = 0.3;
