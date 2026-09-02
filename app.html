@@ -291,6 +291,18 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
 .urteil.gut{border-color:rgba(20,241,149,.35);background:rgba(20,241,149,.06)}
 .urteil.schlecht{border-color:rgba(255,90,90,.35);background:rgba(255,90,90,.05)}
 .urteil.laeuft{color:var(--mu)}
+.thzeile{padding:10px 12px;border-radius:8px;border:1px solid var(--border);margin-bottom:8px;
+  background:rgba(255,255,255,.025)}
+.thzeile.neu{border-color:rgba(20,241,149,.4);background:rgba(20,241,149,.05)}
+.thkopf{display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-size:13.5px}
+.thkopf b{font-size:15px;letter-spacing:.01em}
+.thtag{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;
+  padding:2px 7px;border-radius:4px;background:rgba(20,241,149,.16);color:var(--grn)}
+.thtag.alt{background:rgba(255,255,255,.06);color:var(--mu);text-transform:none;letter-spacing:0}
+.thcoins{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+.thcoin{font-family:var(--mono);font-size:11.5px;padding:3px 8px;border-radius:5px;cursor:pointer;
+  background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--tx)}
+.thcoin:hover{border-color:var(--grn)}
 .scout.streuer{opacity:.62}
 .scout.schwach{opacity:.82}
 .scout.durchgefallen{opacity:.45;border-color:rgba(255,90,90,.3)}
@@ -521,6 +533,14 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
 
   <!-- ============ WACHE ============ -->
   <section class="view" id="view-wache">
+    <h2 style="margin-bottom:4px">Was steigt gerade auf?</h2>
+    <p class="sub">Die Coin-Ersteller sind der schnellste Nachrichtenticker der Welt. Passiert irgendwo
+      etwas, stehen die ersten Coins dazu innerhalb von Minuten — lange bevor jemand danach googelt und
+      Tage bevor es in einer Zeitung steht. Diese Liste liest genau das mit:
+      <b>welches Wort kam vor einer Stunde noch nicht vor und steckt jetzt in acht neuen Coins?</b></p>
+    <div id="th-out"></div>
+    <hr style="border:none;border-top:1px solid var(--border);margin:26px 0 18px">
+
     <div class="filters">
       <input class="winput" id="w-add" placeholder="Stichwort hinzufügen … z.B. raccoon" spellcheck="false" autocomplete="off">
       <button class="btn btn-g btn-sm" id="w-addbtn">Hinzufügen</button>
@@ -1737,6 +1757,186 @@ function sPulse(){
  * Wichtig und ehrlich: sie sammelt nur, waehrend die App offen ist.
  * Alles liegt im Browser, es kostet nichts und gehoert dir.
  */
+/* ------------------------------------------------------------------ *
+ * Themen: was ist NEU, nicht was ist da
+ * ------------------------------------------------------------------ */
+
+/**
+ * Der Unterschied, an dem bisher alles scheiterte.
+ *
+ * Eine Liste "diese Begriffe kommen gerade in Coin-Namen vor" ist
+ * nutzlos, weil dieselben zwanzig Woerter immer vorkommen. Hund, Katze,
+ * Trump, Pepe - das steht dort jeden Tag. Wer daraus etwas ableiten
+ * will, liest nur den Bodensatz.
+ *
+ * Interessant ist die ABLEITUNG: ein Wort, das vor drei Stunden in null
+ * Coins vorkam und jetzt in elf, ist ein Ereignis. Irgendetwas ist in
+ * der Welt passiert, und die Coin-Ersteller haben schneller reagiert
+ * als jede Nachrichtenseite. Das ist der frueheste oeffentliche
+ * Hinweis, den es gibt - frueher als Google Trends, weil dort erst
+ * gesucht wird, nachdem man etwas gesehen hat.
+ *
+ * Dafuer braucht es nur eines, das bisher fehlte: ein Gedaechtnis.
+ * Alle paar Minuten eine Momentaufnahme, und dann vergleichen.
+ */
+var THEMEN = { schnapp: [], letzte: 0 };
+try {
+  var troh = localStorage.getItem("sonar_themen");
+  if(troh) THEMEN = Object.assign(THEMEN, JSON.parse(troh) || {});
+} catch(e){}
+
+var TH_TAKT_MIN = 8;
+var TH_FENSTER_STD = 6;
+
+function themenSave(){
+  try {
+    var grenze = Date.now() - TH_FENSTER_STD*3600*1000;
+    THEMEN.schnapp = THEMEN.schnapp.filter(function(x){ return x.ts > grenze; }).slice(-60);
+    localStorage.setItem("sonar_themen", JSON.stringify(THEMEN));
+  } catch(e){}
+}
+
+/** Eine Momentaufnahme: welches Wort steckt gerade in wie vielen frischen Coins? */
+function themenSchnappschuss(){
+  var jetzt = Date.now();
+  if(jetzt - (THEMEN.letzte||0) < TH_TAKT_MIN*60*1000) return;
+  THEMEN.letzte = jetzt;
+
+  apiFetch("/api/feed?sort=new&limit=60")
+    .then(function(j){
+      var liste = (j && (j.coins || j.items || j.feed)) || [];
+      if(!liste.length) return;
+      var zaehler = {};
+      var traeger = {};
+      liste.forEach(function(c){
+        wortSplitter(String(c.name||"") + " " + String(c.symbol||"")).forEach(function(w){
+          zaehler[w] = (zaehler[w]||0) + 1;
+          if(!traeger[w]) traeger[w] = [];
+          if(traeger[w].length < 6) traeger[w].push({ mint: c.address, symbol: c.symbol, mcap: c.marketCap, score: c.score });
+        });
+      });
+      THEMEN.schnapp.push({ ts: jetzt, zahl: zaehler, coins: traeger, n: liste.length });
+      themenSave();
+      renderThemen();
+    })
+    .catch(function(){});
+}
+
+/**
+ * Woerter aus einem Coin-Namen holen.
+ *
+ * Bewusst streng: unter vier Buchstaben ist nichts, und die ueblichen
+ * Fuellwoerter fliegen raus. Ohne diese Liste bestuende jede Auswertung
+ * aus "coin", "token", "the" und "sol".
+ */
+var TH_MUELL = {
+  coin:1, token:1, the:1, and:1, for:1, sol:1, solana:1, pump:1, fun:1, official:1,
+  meme:1, memecoin:1, moon:1, inu:1, baby:1, mini:1, super:1, mega:1, ultra:1,
+  new:1, real:1, first:1, best:1, good:1, king:1, lord:1, god:1, man:1, boy:1,
+  test:1, wif:1, hat:1, cat:1, dog:1
+};
+function wortSplitter(text){
+  var roh = String(text||"")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .toLowerCase().split(/[^a-z]+/);
+  var out = [], seen = {};
+  roh.forEach(function(w){
+    if(w.length < 4 || w.length > 18) return;
+    if(TH_MUELL[w]) return;
+    if(seen[w]) return;
+    seen[w] = 1; out.push(w);
+  });
+  return out;
+}
+
+/**
+ * Was steigt? Der aktuelle Stand gegen den von vor ein bis drei Stunden.
+ *
+ * Bewertet wird die Differenz, nicht die Hoehe. Ein Wort, das von 0 auf
+ * 8 geht, zaehlt mehr als eines, das konstant bei 12 liegt - obwohl das
+ * zweite in jeder einfachen Liste weiter oben staende.
+ */
+function themenAufsteiger(){
+  var s = THEMEN.schnapp;
+  if(s.length < 3) return [];
+  var jetzt = s[s.length-1];
+  var vorher = s.filter(function(x){ return jetzt.ts - x.ts >= 45*60*1000; });
+  if(!vorher.length) return [];
+
+  // Basis = hoechster Stand im aelteren Zeitraum. Konservativ: so wird
+  // ein Wort, das schon einmal oben war, nicht als neu verkauft.
+  var basis = {};
+  vorher.forEach(function(sn){
+    Object.keys(sn.zahl).forEach(function(w){
+      if((sn.zahl[w]||0) > (basis[w]||0)) basis[w] = sn.zahl[w];
+    });
+  });
+
+  var out = [];
+  Object.keys(jetzt.zahl).forEach(function(w){
+    var nun = jetzt.zahl[w];
+    if(nun < 3) return;
+    var alt = basis[w] || 0;
+    var zuwachs = nun - alt;
+    if(zuwachs < 2) return;
+    out.push({
+      wort: w, jetzt: nun, vorher: alt, zuwachs: zuwachs,
+      neu: alt === 0,
+      coins: jetzt.coins[w] || []
+    });
+  });
+  return out.sort(function(a,b){ return (b.neu?100:0)+b.zuwachs - ((a.neu?100:0)+a.zuwachs); }).slice(0, 12);
+}
+
+function renderThemen(){
+  var box = el("th-out");
+  if(!box) return;
+  var s = THEMEN.schnapp;
+  var stunden = s.length >= 2 ? Math.round((s[s.length-1].ts - s[0].ts)/3600000*10)/10 : 0;
+
+  if(s.length < 3){
+    box.innerHTML = '<div class="empty">Sammelt Momentaufnahmen — noch '+Math.max(1, 3-s.length)+' nötig.<br>'+
+      '<span class="mu2">Alle '+TH_TAKT_MIN+' Minuten eine. Nach etwa einer Stunde zeigt sich das erste Muster.</span></div>';
+    return;
+  }
+
+  var auf = themenAufsteiger();
+  var kopf = '<p class="sub">'+s.length+' Momentaufnahmen über '+stunden+' Std. '+
+    '<b>Nicht was oft vorkommt steht hier, sondern was neu ist</b> — dieselben zwanzig Wörter '+
+    '(Hund, Trump, Pepe) tauchen jeden Tag auf und bedeuten nichts.</p>';
+
+  if(!auf.length){
+    box.innerHTML = kopf + '<div class="empty">Gerade steigt nichts auf.<br>'+
+      '<span class="mu2">Das ist ein Ergebnis: die Ersteller reagieren im Moment auf nichts Bestimmtes.</span></div>';
+    return;
+  }
+
+  box.innerHTML = kopf + auf.map(function(t){
+    var coins = t.coins.filter(function(c){ return c.symbol; }).slice(0,4).map(function(c){
+      return '<span class="thcoin" data-mint="'+esc(c.mint)+'">'+esc(c.symbol)+
+        (c.mcap ? ' <span class="mu2">'+money(c.mcap)+'</span>' : '')+'</span>';
+    }).join("");
+    return '<div class="thzeile'+(t.neu?" neu":"")+'">'+
+      '<div class="thkopf"><b>'+esc(t.wort)+'</b>'+
+        (t.neu ? '<span class="thtag">neu</span>' : '<span class="thtag alt">'+t.vorher+' → '+t.jetzt+'</span>')+
+        '<span class="mu2">'+t.jetzt+' frische Coins tragen das Wort</span></div>'+
+      '<div class="thcoins">'+coins+'</div>'+
+    '</div>';
+  }).join("") +
+  '<p class="sub" style="margin-top:14px"><b style="color:var(--yel)">Und jetzt der wichtige Teil:</b> '+
+  'ein aufsteigendes Wort heißt nur, dass Ersteller reagieren — nicht, dass das Thema trägt. '+
+  'Prüfe im Tab <b>Wache</b>, ob dasselbe Wort auch bei Reddit, Google Trends oder in den Nachrichten auftaucht. '+
+  'Nur dann steht eine Geschichte dahinter statt eines Bots, der zwölfmal dasselbe mintet.</p>';
+
+  box.querySelectorAll("[data-mint]").forEach(function(n){
+    n.addEventListener("click", function(){
+      document.querySelector('.tab[data-view="scanner"]').click();
+      window.scrollTo(0,0);
+      scan(n.getAttribute("data-mint"));
+    });
+  });
+}
+
 var KOHORTE = { coins: [], letzteAufnahme: 0 };
 try {
   var kroh = localStorage.getItem("sonar_kohorte");
@@ -2682,6 +2882,12 @@ setTimeout(learnFollowUp, 8000);
 // Stundentakt, nachschauen alle vier Minuten. Sie braucht keinen
 // Kundschafter und keine Wallet - nur eine offene App.
 setTimeout(function(){ kohorteAufnehmen(); kohorteVerfolgen(); }, 12000);
+// Themen: haeufiger als die Kohorte, weil eine Welle in einer Stunde
+// entsteht und vergeht. Acht Minuten sind der Kompromiss zwischen
+// "merkt es rechtzeitig" und "fragt sich nicht dumm und daemlich".
+setTimeout(function(){ themenSchnappschuss(); }, 4000);
+setInterval(themenSchnappschuss, TH_TAKT_MIN*60*1000);
+renderThemen();
 setInterval(kohorteAufnehmen, 10*60*1000);
 setInterval(kohorteVerfolgen, 4*60*1000);
 renderKohorte();
