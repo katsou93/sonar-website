@@ -579,6 +579,112 @@ const SCOUT_MIN_HITS = 2;
  * Die Kundschafter finden. Ein Aufruf pro untersuchtem Gewinner-Coin,
  * sequenziell wegen des Zwei-pro-Sekunde-Limits, zwoelf Stunden gecacht.
  */
+/* ------------------------------------------------------------------ *
+ * Die Bilanz: verdient diese Wallet ueberhaupt Geld?
+ * ------------------------------------------------------------------ */
+
+/**
+ * Der teuerste blinde Fleck des ganzen Werkzeugs, und er war von Anfang
+ * an da.
+ *
+ * Bisher lief die Auswahl so: nimm Coins, die gelaufen sind, schau wer
+ * frueh drin war, nenne die Leute Kundschafter. Das beantwortet aber
+ * nur die Frage "wer war bei einem Gewinner dabei?" - nicht die Frage,
+ * auf die es ankommt: "verdient dieser Mensch Geld?"
+ *
+ * Der Unterschied ist alles. Zu jedem Coin, der laeuft, gibt es vierzig
+ * fruehe Kaeufer. Die allermeisten davon kaufen zweihundert frische
+ * Launches pro Woche und verlieren bei hundertsiebenundneunzig. Sie
+ * stehen in unserer Liste, WEIL der Coin gelaufen ist - nicht, weil sie
+ * gut sind. Das ist Auswahl nach dem Ueberlebenden, und sie fuehlt sich
+ * von innen wie eine Erkenntnis an.
+ *
+ * Diese Funktion dreht das um. Sie nimmt die letzten Swaps einer Wallet
+ * und rechnet pro Coin nach, was hineinging und was herauskam:
+ *
+ *   geschlossen - er hat mindestens 80% seiner Token wieder verkauft.
+ *                 Nur solche Positionen sagen etwas aus.
+ *   offen       - er sitzt noch drin. Kann ein Gewinner sein, kann eine
+ *                 Leiche sein. Wir zaehlen es NICHT als Erfolg.
+ *
+ * Was dabei ehrlich bleiben muss: hundert Transaktionen sind ein
+ * Ausschnitt, keine Lebensgeschichte. Unter acht geschlossenen
+ * Positionen sagen wir "zu wenig Daten" statt eine Quote zu erfinden.
+ */
+const BILANZ_MIN_TRADES = 8;
+
+function ledgerFromSwaps(txs, wallet) {
+  const perMint = new Map();
+  for (const tx of txs || []) {
+    const move = buyFromSwap(tx, wallet);
+    if (!move || !move.mint) continue;
+    const m = perMint.get(move.mint) || { mint: move.mint, symbol: move.symbol, tokIn: 0, tokOut: 0, solIn: 0, solOut: 0 };
+    if (move.side === "kauf") {
+      m.tokIn += move.tokenAmount || 0;
+      m.solIn += move.solAmount || 0;
+    } else {
+      m.tokOut += move.tokenAmount || 0;
+      m.solOut += move.solAmount || 0;
+    }
+    if (!m.symbol && move.symbol) m.symbol = move.symbol;
+    perMint.set(move.mint, m);
+  }
+
+  const zu = [];
+  let offen = 0;
+  for (const m of perMint.values()) {
+    // Ohne Einsatz keine Aussage - das sind Airdrops oder Reste.
+    if (m.solIn <= 0 || m.tokIn <= 0) continue;
+    const verkauftAnteil = m.tokOut / m.tokIn;
+    if (verkauftAnteil < 0.8) { offen++; continue; }
+    zu.push({ mint: m.mint, symbol: m.symbol, x: m.solOut / m.solIn, solIn: m.solIn });
+  }
+
+  if (zu.length < BILANZ_MIN_TRADES) {
+    return { trades: zu.length, offen: offen, genug: false, quote: null, median: null, bestX: null };
+  }
+
+  const gewinne = zu.filter((t) => t.x >= 1.05).length;
+  const xs = zu.map((t) => t.x).sort((a, b) => a - b);
+  const mitte = Math.floor(xs.length / 2);
+  const median = xs.length % 2 ? xs[mitte] : (xs[mitte - 1] + xs[mitte]) / 2;
+
+  return {
+    trades: zu.length,
+    offen: offen,
+    genug: true,
+    quote: Math.round((gewinne / zu.length) * 100),
+    median: Math.round(median * 100) / 100,
+    bestX: Math.round(xs[xs.length - 1] * 10) / 10,
+    // Fuer das Ziel "5 Euro rein, 30 Euro raus" zaehlt genau eine Zahl:
+    // wie oft hat dieser Mensch eine Position wirklich versechsfacht
+    // UND sie dann auch verkauft? Papiergewinne zaehlen hier nicht.
+    sechsfach: zu.filter((t) => t.x >= 6).length,
+  };
+}
+
+/** Die Bilanz einer Wallet holen. Ein Helius-Aufruf, zwoelf Stunden gecacht. */
+async function walletLedger(wallet) {
+  if (!hasKey()) return { trades: 0, genug: false, quote: null, median: null };
+  const key = process.env.HELIUS_API_KEY;
+  const url =
+    HELIUS + "/v0/addresses/" + wallet + "/transactions?api-key=" + encodeURIComponent(key) +
+    "&type=SWAP&limit=100";
+  try {
+    const txs = await cached("ledger:" + wallet, 12 * 60 * 60 * 1000, async () => {
+      const data = await getJson(url, { source: "helius", timeoutMs: 9000, retries: 0 });
+      return Array.isArray(data) ? data : [];
+    });
+    return ledgerFromSwaps(txs, wallet);
+  } catch (err) {
+    return { trades: 0, genug: false, quote: null, median: null, fehler: true };
+  }
+}
+
+module.exports.ledgerFromSwaps = ledgerFromSwaps;
+module.exports.walletLedger = walletLedger;
+module.exports.BILANZ_MIN_TRADES = BILANZ_MIN_TRADES;
+
 const EINMAL_RANG = 15;
 const EINMAL_SOL = 0.3;
 const EINMAL_LAUF = 100;
@@ -720,7 +826,29 @@ async function findScouts(opts) {
   const einmal = scouts.filter((x) => x.tier === "einmal").slice(0, platz);
   const gereiht = mehrfach.concat(einmal);
 
-  return { keyMissing: false, scouts: gereiht, winners: checked };
+  // Und jetzt die Frage, die vorher nie gestellt wurde: verdienen diese
+  // Leute eigentlich Geld? Ein Aufruf pro Kandidat, zwoelf Stunden
+  // gecacht - sequenziell wegen der zwei Anfragen pro Sekunde.
+  // Gedeckelt und mit Uhr: die Coin-Pruefung oben hat schon Sekunden
+  // gekostet, und Vercel bricht die Funktion nach dreissig ab. Lieber
+  // fuenf gepruefte Wallets als ein Timeout mit null Ergebnis.
+  if (options.bilanz !== false) {
+    const frist = Date.now() + (options.bilanzMs || 9000);
+    const wieviele = Math.min(gereiht.length, options.bilanzMax || 5);
+    for (let i = 0; i < wieviele; i++) {
+      if (Date.now() > frist) break;
+      if (i > 0) await new Promise((r) => setTimeout(r, 550));
+      gereiht[i].bilanz = await walletLedger(gereiht[i].wallet);
+    }
+  }
+
+  // Wer nachweislich verliert, wird nicht vorgeschlagen - egal wie frueh
+  // er einmal dabei war. Wer zu wenige geschlossene Positionen hat,
+  // bleibt drin, aber mit dem Vermerk "ungeprueft": ihn rauszuwerfen
+  // waere genauso gelogen wie ihn zu empfehlen.
+  const bestanden = gereiht.filter((x) => !(x.bilanz && x.bilanz.genug && x.bilanz.quote < 25));
+
+  return { keyMissing: false, scouts: bestanden, winners: checked, verworfen: gereiht.length - bestanden.length };
 }
 
 /**
@@ -864,6 +992,11 @@ module.exports.pulseSignatures = pulseSignatures;
  * Ergebnis 0 bis 100, und jeder Punkt laesst sich in einem Satz erklaeren
  * - das steht als "warum" mit in der Antwort.
  */
+// 5 Euro rein, 30 Euro raus. Das ist das erklaerte Ziel, und es ist
+// eine bessere Zielvorgabe als "moeglichst viel": es ist erreichbar, es
+// ist messbar, und es sagt einem, wann man verkauft.
+const ZIEL_FAKTOR = 6;
+
 function relevanceOf(move, scout, solUsd) {
   const sol = move.solAmount || 0;
   const why = [];
@@ -891,13 +1024,26 @@ function relevanceOf(move, scout, solUsd) {
     if (share >= 0.005) why.push(move.sharePct + "% des ganzen Coins");
   }
 
-  // 3. Wer kauft.
+  // 3. Wer kauft - und zwar nach seiner Bilanz, nicht nach seinem Ruf.
   const kind = (scout && scout.kind) || null;
   if (kind === "position") {
     score += 20;
     why.push("Positionstrader");
   } else if (kind === "klein") {
     score += 10;
+  }
+  const bilanz = scout && scout.bilanz;
+  if (bilanz && bilanz.genug) {
+    if (bilanz.quote >= 55) {
+      score += 15;
+      why.push(bilanz.quote + "% seiner Trades im Plus (" + bilanz.trades + " gemessen)");
+    } else if (bilanz.quote >= 40) {
+      score += 5;
+    } else {
+      score -= 10;
+      why.push("nur " + bilanz.quote + "% seiner Trades im Plus");
+    }
+    if (bilanz.sechsfach >= 2) why.push(bilanz.sechsfach + "× hat er selbst versechsfacht und verkauft");
   }
 
   // 4. Unsere eigene Pruefung - und zwar als FAKTOR, nicht als Abzug.
@@ -924,6 +1070,28 @@ function relevanceOf(move, scout, solUsd) {
   } else {
     // Ohne eigene Pruefung bleibt es eine Behauptung.
     faktor = 0.7;
+  }
+
+  // 4b. Ist das Ziel von hier aus ueberhaupt erreichbar?
+  //
+  // Das Ziel heisst: 5 Euro rein, 30 Euro raus. Das sind Faktor 6, und
+  // Faktor 6 ist eine Aussage ueber das Marktkapital, nicht ueber den
+  // Coin. Ein Coin bei 8.000 muss auf 48.000 - das passiert an einem
+  // normalen Tag dutzendfach. Ein Coin bei 800.000 muss auf 4,8
+  // Millionen - das passiert selten, und wenn, dann nicht heute.
+  // Deshalb wird hier nach dem WEG gefiltert, nicht nach der Groesse an
+  // sich.
+  if (mcap && mcap > 0) {
+    move.zielMcap = Math.round(mcap * ZIEL_FAKTOR);
+    if (mcap <= 50000) {
+      faktor *= 1.1;
+    } else if (mcap <= 250000) {
+      faktor *= 0.8;
+      why.push("für 6× müsste er auf $" + Math.round(move.zielMcap / 1000) + "k");
+    } else {
+      faktor *= 0.45;
+      why.push("zu gross für 6× — bräuchte $" + Math.round(move.zielMcap / 1000) + "k");
+    }
   }
 
   // 5. Kommt man wieder raus?
@@ -1012,4 +1180,5 @@ async function rankMoves(moves, scouts) {
 
 module.exports.relevanceOf = relevanceOf;
 module.exports.rankMoves = rankMoves;
+module.exports.ZIEL_FAKTOR = ZIEL_FAKTOR;
 module.exports.dampenBursts = dampenBursts;
