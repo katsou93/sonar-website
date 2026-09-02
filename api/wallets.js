@@ -1,6 +1,7 @@
 "use strict";
 /**
  * GET /api/wallets?addrs=<adresse,adresse,...>
+ * GET /api/wallets?discover=1
  *
  * Was haben die beobachteten Wallets zuletzt gekauft und verkauft?
  * Jeder Kauf kommt mit unserer eigenen Bewertung des Coins zurueck.
@@ -10,7 +11,7 @@
  * dann die Einrichtungsanleitung statt eines Fehlers.
  */
 
-const { watch } = require("./_lib/wallets");
+const { watch, autoScout } = require("./_lib/wallets");
 const { send, fail, authorized, preflight } = require("./_lib/respond");
 
 module.exports = async function handler(req, res) {
@@ -19,6 +20,13 @@ module.exports = async function handler(req, res) {
 
   const q = req.query || {};
   try {
+    // discover=1: die App sucht sich die Wallets selbst, statt dass
+    // jemand Adressen eintraegt.
+    if (q.discover === "1" || q.discover === "true") {
+      const found = await autoScout({ coins: 8, follow: 5 });
+      return send(res, 200, Object.assign({ ok: true }, found), 120);
+    }
+
     const result = await watch(q.addrs || "", {
       limit: Math.min(25, Math.max(1, Number(q.limit) || 12)),
       buysOnly: q.buysOnly === "1",
