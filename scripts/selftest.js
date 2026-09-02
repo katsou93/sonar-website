@@ -935,6 +935,22 @@ async function main() {
     assert.strictEqual(wl.POSITION_SOL, 0.5);
   });
 
+  await check("der Puls verlangt einen Schluessel, wirft aber nicht", () => {
+    const alt = process.env.HELIUS_API_KEY;
+    delete process.env.HELIUS_API_KEY;
+    return wl.pulseSignatures("M2mx93ekt1fmXSVkTrUL9xVFHkmME8HTUi5Cyc5aF7K").then((res) => {
+      if (alt) process.env.HELIUS_API_KEY = alt;
+      assert.strictEqual(res.keyMissing, true);
+      assert.deepStrictEqual(res.wallets, []);
+    });
+  });
+
+  await check("der Puls filtert Muell-Adressen genauso wie alles andere", () => {
+    // Der Puls laeuft im 15-Sekunden-Takt. Eine ungeprueft
+    // durchgereichte Adresse waere hier besonders teuer.
+    assert.deepStrictEqual(wl.parseAddresses("0xabc, muell"), []);
+  });
+
   await check("ein Coin kann nicht in beiden Durchgaengen zaehlen", () => {
     // Live beobachtet: MADE erfuellte die Kriterien beider Listen. Eine
     // Wallet haette dadurch zwei Treffer aus einem Coin bekommen - und
