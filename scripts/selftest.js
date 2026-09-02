@@ -909,6 +909,46 @@ async function main() {
     });
   });
 
+  await check("der Median der Einstiege trennt Streuer von Positionen", () => {
+    // Der Live-Befund, der diese Einstufung ausgeloest hat: drei Wallets
+    // mit echten Treffern, aber 0,003 bis 0,09 SOL pro Position.
+    assert.strictEqual(wl.kindOf(0.003), "streuer");
+    assert.strictEqual(wl.kindOf(0.09), "streuer");
+    assert.strictEqual(wl.kindOf(0.3), "klein");
+    assert.strictEqual(wl.kindOf(2.5), "position");
+    assert.strictEqual(wl.kindOf(0), "streuer", "ohne Einsatz kein Vertrauen");
+  });
+
+  await check("der Median ist gegen einen einzelnen Grosskauf robust", () => {
+    // Ein Streuer, der einmal 20 SOL setzt, bleibt ein Streuer.
+    assert.strictEqual(wl.medianOf([0.01, 0.02, 0.03, 0.02, 20]), 0.02);
+    assert.strictEqual(wl.kindOf(wl.medianOf([0.01, 0.02, 0.03, 0.02, 20])), "streuer");
+  });
+
+  await check("der Median kommt auch mit leeren Daten klar", () => {
+    assert.strictEqual(wl.medianOf([]), 0);
+    assert.strictEqual(wl.medianOf(null), 0);
+    assert.strictEqual(wl.medianOf([1, 3]), 2);
+  });
+
+  await check("die Schwelle fuer eine echte Position steht bei einem halben SOL", () => {
+    assert.strictEqual(wl.POSITION_SOL, 0.5);
+  });
+
+  await check("die Suche nach etablierten Coins ist verdrahtet", () => {
+    assert.strictEqual(typeof wl.buyersBefore, "function");
+    assert.strictEqual(typeof wl.establishedRunners, "function");
+  });
+
+  await check("ohne Schluessel liefert buyersBefore nichts statt zu werfen", () => {
+    const alt = process.env.HELIUS_API_KEY;
+    delete process.env.HELIUS_API_KEY;
+    return wl.buyersBefore("MemeMint111111111111111111111111111111111111").then((res) => {
+      if (alt) process.env.HELIUS_API_KEY = alt;
+      assert.deepStrictEqual(res, []);
+    });
+  });
+
   await check("ohne Schluessel liefert die Selbstsuche keine Kundschafter", () => {
     const alt = process.env.HELIUS_API_KEY;
     delete process.env.HELIUS_API_KEY;
