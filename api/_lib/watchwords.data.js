@@ -20,10 +20,16 @@
  * (kommagetrennt) - die wird dazugemischt, ohne dass ihr Code anfasst.
  *
  * Stand: 1. September 2026
+ *
+ * Hinweis zur Aktualisierung: diese Datei zu aendern loest bei Vercel
+ * automatisch ein neues Deployment aus. Das ist auch der einfachste Weg,
+ * neu gesetzte Environment-Variablen zu uebernehmen - Variablen greifen
+ * erst mit dem naechsten Deployment.
  */
 
 module.exports = {
   updated: "2026-09-01",
+  // Wortliste zuletzt geprueft, als der Helius-Schluessel dazukam.
   words: [
     // Laufende virale Themen
     "raccoon", // Jimothy, der Waschbaer aus Seattle - gerade in der US-Berichterstattung
