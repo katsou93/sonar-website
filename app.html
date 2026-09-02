@@ -233,6 +233,31 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
 .srcbar .s{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:11px}
 .srcbar .dot{width:6px;height:6px;border-radius:50%;background:var(--red);display:inline-block}
 .srcbar .s.ok .dot{background:var(--grn)}
+.setup{border:1px solid rgba(255,197,49,.28);background:rgba(255,197,49,.05);border-radius:12px;padding:20px 22px;margin-bottom:18px}
+.setup h4{margin:0 0 8px;font-size:14px;font-weight:650;color:var(--yel)}
+.setup p{margin:0 0 10px;font-size:13px;color:var(--mu);line-height:1.6;max-width:70ch}
+.setup ol{margin:0;padding-left:20px;font-size:13px;color:var(--mu);line-height:1.75}
+.setup code{font-family:var(--mono);font-size:12px;background:rgba(255,255,255,.07);padding:2px 6px;border-radius:4px;color:var(--tx)}
+.wal{display:flex;gap:7px;flex-wrap:wrap;align-items:center;padding:0 2px 16px}
+.walchip{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;border:1px solid var(--border);
+  background:rgba(255,255,255,.02);color:var(--mu);font-size:12.5px}
+.walchip b{color:var(--tx);font-weight:600}
+.walchip .mono{font-family:var(--mono);font-size:11px;color:var(--mu2)}
+.walchip .x{opacity:.45;font-size:14px;cursor:pointer;line-height:1}
+.walchip .x:hover{opacity:1;color:var(--red)}
+.move{display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;padding:14px 16px;
+  border:1px solid var(--border);border-radius:11px;background:var(--panel);margin-bottom:8px;cursor:pointer}
+.move:hover{border-color:var(--border2)}
+.move.kauf{border-left:3px solid var(--grn)}
+.move.verkauf{border-left:3px solid var(--red)}
+.move .who{font-family:var(--mono);font-size:11px;color:var(--mu2);margin-top:3px}
+.move .sym{font-size:15px;font-weight:650;color:var(--tx)}
+.move .amt{font-family:var(--mono);font-size:14px;color:var(--tx);text-align:right}
+.move .sub{font-size:11.5px;color:var(--mu2);margin-top:2px;text-align:right}
+.cl{display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;padding:15px 17px;
+  border:1px solid rgba(20,241,149,.4);border-radius:12px;background:rgba(20,241,149,.07);margin-bottom:8px;cursor:pointer}
+.cl .n{font-family:var(--mono);font-size:24px;font-weight:650;color:var(--grn);text-align:center;min-width:34px}
+@media(max-width:640px){.move,.cl{grid-template-columns:1fr;gap:6px}.move .amt,.move .sub{text-align:left}}
 .terms{display:flex;gap:6px;flex-wrap:wrap;padding:2px 2px 0}
 .term{font-family:var(--mono);font-size:11.5px;padding:4px 9px;border-radius:6px;border:1px solid var(--border);
   color:var(--mu2);background:rgba(255,255,255,.02);cursor:pointer}
@@ -305,6 +330,7 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
       <button class="tab" data-view="scanner">Scanner</button>
       <button class="tab" data-view="radar">Radar</button>
       <button class="tab" data-view="wache">Wache</button>
+      <button class="tab" data-view="spuren">Spuren</button>
       <button class="tab" data-view="watchlist">Watchlist</button>
       <button class="tab" data-view="regeln">Regeln</button>
     </div>
@@ -381,6 +407,22 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
   </section>
 
   <!-- ============ WATCHLIST ============ -->
+  <!-- ============ SPUREN ============ -->
+  <section class="view" id="view-spuren">
+    <div class="filters">
+      <input class="winput" id="s-addr" placeholder="Wallet-Adresse einfügen …" spellcheck="false" autocomplete="off">
+      <input class="winput" id="s-name" style="max-width:150px" placeholder="Spitzname (optional)" spellcheck="false" autocomplete="off">
+      <button class="btn btn-g btn-sm" id="s-addbtn">Verfolgen</button>
+      <div class="hspace" style="flex:1"></div>
+      <label class="autolabel"><input type="checkbox" id="s-buys" checked> nur Käufe</label>
+      <label class="autolabel"><input type="checkbox" id="s-auto"> alle 3 min</label>
+      <button class="btn btn-g btn-sm" id="s-reload">Jetzt prüfen</button>
+    </div>
+    <div id="s-wallets" class="wal"></div>
+    <div id="s-out"></div>
+    <p class="hint" style="margin-top:20px"><b style="color:var(--mu)">Warum Wallets und nicht X-Accounts:</b> Ein Trader postet <i>nachdem</i> er gekauft hat — oder erst, wenn er Abnehmer sucht. Die Wallet zeigt den Kauf in dem Moment, in dem er passiert, in voller Höhe, ohne Erzählung. Das ist früher als jeder Tweet und lässt sich nicht fälschen.<br><br><b style="color:var(--yel)">Und der ehrliche Teil:</b> Wer kopiert, ist immer hinten. Er ist vor dir drin, und wenn er verkauft, erfährst du es <i>danach</i>. Manche Wallets sehen nur deshalb genial aus, weil sie noch früher informiert waren als der, den du beobachtest. Jeder Kauf hier bekommt deshalb sofort unsere eigene Prüfung daneben — er kauft nicht für dich.</p>
+  </section>
+
   <!-- ============ WACHE ============ -->
   <section class="view" id="view-wache">
     <div class="filters">
@@ -518,6 +560,7 @@ for(var i=0;i<tabs.length;i++){
     if(v==="jetzt" && !jetztLoaded){ jetztLoaded = true; loadJetzt(); }
     if(v==="radar" && !radarLoaded) loadRadar();
     if(v==="wache" && !wacheLoaded){ wacheLoaded = true; loadWache(); }
+    if(v==="spuren" && !spurenLoaded){ spurenLoaded = true; loadSpuren(); }
     if(v==="watchlist" && !this.classList.contains("was-on")) renderWatchlist();
     document.querySelectorAll(".tab").forEach(function(t){ t.classList.remove("was-on"); });
     this.classList.add("was-on");
@@ -742,6 +785,234 @@ el("j-auto").addEventListener("change", function(){
   if(this.checked) jAutoTimer = setInterval(function(){
     if(el("view-jetzt").classList.contains("on")) loadJetzt();
   }, 30000);
+});
+
+/* ---------- Spuren: Wallets verfolgen ---------- */
+
+/**
+ * Wallet-Verfolgung statt Social-Media-Verfolgung.
+ *
+ * Die Adressen kommen von Hand - meist von der Activity-Liste eines
+ * pump.fun-Coins, der gerade gelaufen ist. Cloudflare blockt uns beim
+ * automatischen Auslesen dieser Seite, den Browser des Nutzers nicht.
+ * Also: er erntet, die App bewacht.
+ */
+var spurenLoaded = false, sAutoTimer = null, S_WALLETS = null;
+var sKnown = {};   // Signaturen, fuer die schon benachrichtigt wurde
+
+try { sKnown = JSON.parse(localStorage.getItem("sonar_moves_seen") || "{}") || {}; } catch(e){ sKnown = {}; }
+
+function sLoad(){
+  if(S_WALLETS !== null) return S_WALLETS;
+  try { S_WALLETS = JSON.parse(localStorage.getItem("sonar_wallets") || "[]") || []; }
+  catch(e){ S_WALLETS = []; }
+  return S_WALLETS;
+}
+function sSave(list){
+  S_WALLETS = list;
+  try { localStorage.setItem("sonar_wallets", JSON.stringify(list)); } catch(e){}
+}
+/** Solana-Adresse: Base58, 32-44 Zeichen. Kein 0x, keine 0/O/I/l. */
+function isSolAddress(a){ return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(String(a||"").trim()); }
+function shortAddr(a){ return String(a||"").slice(0,4) + "…" + String(a||"").slice(-4); }
+
+function sAdd(addr, name){
+  var a = String(addr||"").trim();
+  if(!isSolAddress(a)) return "Das ist keine gültige Solana-Adresse. 32–44 Zeichen, kein 0x davor.";
+  var list = sLoad().slice();
+  if(list.some(function(w){ return w.addr === a; })) return "Die Wallet wird schon verfolgt.";
+  if(list.length >= 8) return "Maximal 8 Wallets — jede kostet bei jeder Prüfung Helius-Guthaben.";
+  list.push({ addr: a, name: String(name||"").trim().slice(0,24) });
+  sSave(list);
+  return null;
+}
+
+function renderWallets(){
+  var list = sLoad();
+  var box = el("s-wallets");
+  if(!list.length){
+    box.innerHTML = '<span class="tlabel">Wallets</span><span class="mu2" style="font-size:12.5px">keine — unten steht, wo du sie findest</span>';
+    return;
+  }
+  box.innerHTML = '<span class="tlabel">Wallets</span>' + list.map(function(w){
+    return '<span class="walchip">'+(w.name?'<b>'+esc(w.name)+'</b>':'')+
+      '<span class="mono">'+esc(shortAddr(w.addr))+'</span>'+
+      '<span class="x" data-del="'+esc(w.addr)+'">×</span></span>';
+  }).join("");
+  box.querySelectorAll("[data-del]").forEach(function(x){
+    x.addEventListener("click", function(){
+      sSave(sLoad().filter(function(w){ return w.addr !== x.getAttribute("data-del"); }));
+      renderWallets(); loadSpuren();
+    });
+  });
+}
+
+function nameOf(addr){
+  var hit = sLoad().find(function(w){ return w.addr === addr; });
+  return (hit && hit.name) || shortAddr(addr);
+}
+
+function whenTxt(ts){
+  if(!ts) return "";
+  var min = Math.round((Date.now()/1000 - ts) / 60);
+  if(min < 1) return "gerade eben";
+  if(min < 60) return "vor " + min + " Min";
+  if(min < 1440) return "vor " + Math.round(min/60) + " Std";
+  return "vor " + Math.round(min/1440) + " Tagen";
+}
+
+function moveRow(m){
+  var kauf = m.side === "kauf";
+  var c = m.coin || {};
+  var meta = [];
+  if(m.score != null) meta.push("Score " + m.score);
+  if(c.organicShareH1 != null) meta.push(Math.round(c.organicShareH1*100) + "% echt");
+  if(c.marketCap) meta.push(money(c.marketCap));
+  if(c.ageMinutes != null) meta.push(age(c.ageMinutes) + " alt");
+  var flags = (m.topFlags||[]).map(function(f){ return f.title; }).slice(0,2).join(" · ");
+
+  return '<div class="move '+(kauf?"kauf":"verkauf")+'" data-addr="'+esc(m.mint)+'">'+
+    avatar(c.imageUrl, m.symbol, "av")+
+    '<div style="min-width:0">'+
+      '<div class="sym">'+(kauf?"":"↩ ")+esc(m.symbol || "?")+
+        (m.score != null ? ' <span class="scorepill '+scoreColor(m.score, m.verdict)+'" style="margin-left:6px">'+m.score+'</span>' : '')+
+      '</div>'+
+      '<div class="who">'+esc(nameOf(m.wallet))+' · '+(kauf?"gekauft":"verkauft")+' '+esc(whenTxt(m.timestamp))+
+        (m.source?' · '+esc(String(m.source).toLowerCase()):'')+'</div>'+
+      (flags?'<div class="who" style="color:var(--yel);margin-top:4px">⚠ '+esc(flags)+'</div>':'')+
+    '</div>'+
+    '<div><div class="amt" style="color:'+(kauf?"var(--grn)":"var(--red)")+'">'+
+      (m.solAmount ? (kauf?"−":"+")+m.solAmount+" SOL" : "—")+'</div>'+
+      '<div class="sub">'+esc(meta.join(" · "))+'</div></div>'+
+  '</div>';
+}
+
+function clusterRow(c){
+  return '<div class="cl" data-addr="'+esc(c.mint)+'">'+
+    '<div class="n">'+c.wallets+'</div>'+
+    '<div style="min-width:0"><div class="sym" style="font-size:16px;font-weight:650;color:var(--tx)">'+esc(c.symbol||"?")+
+      (c.score != null ? ' <span class="scorepill '+scoreColor(c.score,null)+'" style="margin-left:6px">'+c.score+'</span>' : '')+'</div>'+
+      '<div class="who" style="color:var(--mu)">'+c.wallets+' verschiedene Wallets, die du verfolgst, sind hier rein · '+
+      c.buys+' Käufe · '+c.solTotal+' SOL zusammen</div></div>'+
+    '<div class="amt" style="color:var(--grn)">'+esc(whenTxt(c.lastAt))+'</div>'+
+  '</div>';
+}
+
+function setupBox(){
+  return '<div class="setup">'+
+    '<h4>Einmal einrichten: Helius-Schlüssel</h4>'+
+    '<p>Wallet-Bewegungen kommen direkt von der Solana-Kette. Dafür braucht die App einen kostenlosen Zugang bei Helius — ohne Kreditkarte, eine Million Abrufe im Monat.</p>'+
+    '<ol>'+
+      '<li>Auf <code>helius.dev</code> kostenlos registrieren.</li>'+
+      '<li>Im Dashboard den <b>API Key</b> kopieren.</li>'+
+      '<li>In Vercel unter <b>Settings → Environment Variables</b> anlegen: <code>HELIUS_API_KEY</code> mit dem Schlüssel als Wert.</li>'+
+      '<li>Einmal neu deployen (Deployments → oben rechts → Redeploy).</li>'+
+    '</ol>'+
+    '<p style="margin-top:12px;margin-bottom:0">Danach läuft dieser Reiter. Wallets kannst du jetzt schon eintragen — sie bleiben gespeichert.</p>'+
+  '</div>';
+}
+
+function harvestBox(){
+  return '<div class="wsec"><h3>Woher du die Adressen bekommst</h3>'+
+    '<p class="sub">Genau dort, wo du es schon gesehen hast: <b>pump.fun zeigt unter jedem Coin eine Activity-Liste</b> mit allen Käufen und den Wallets dahinter. Das ist die beste Quelle, die es gibt — und der Grund, warum diese Aufteilung funktioniert: die Seite ist gegen automatisches Auslesen geschützt, gegen deinen Browser aber nicht.</p>'+
+    '<ol style="font-size:13px;color:var(--mu);line-height:1.8;padding-left:20px;margin:0">'+
+      '<li>Such dir einen Coin, der <b>gestern oder heute richtig gelaufen ist</b> — nicht einen, der gerade läuft.</li>'+
+      '<li>Öffne ihn auf pump.fun und geh auf <b>Activity</b> bzw. <b>Trades</b>.</li>'+
+      '<li>Scroll ganz nach unten, zu den <b>ersten</b> Käufen. Die Wallets dort waren früh drin.</li>'+
+      '<li>Wallet anklicken: hat sie <b>mehrere</b> solche Treffer, ist sie interessant. Ein einziger Treffer ist Glück.</li>'+
+      '<li>Adresse kopieren, oben einfügen, Spitznamen vergeben.</li>'+
+    '</ol>'+
+    '<p class="sub" style="margin-top:12px">Vorsicht bei Wallets, die in <i>jedem</i> Coin auftauchen — das sind Bots, die alles kaufen. Du suchst die, die <b>wenig</b> kaufen und oft richtig liegen.</p>'+
+  '</div>';
+}
+
+function loadSpuren(){
+  renderWallets();
+  var out = el("s-out");
+  var list = sLoad();
+  if(!list.length){ out.innerHTML = harvestBox(); return; }
+  if(!out.querySelector(".move")) out.innerHTML = '<div class="skel" style="height:80px"></div><div class="skel" style="height:80px"></div>';
+
+  var qs = "addrs=" + encodeURIComponent(list.map(function(w){ return w.addr; }).join(","));
+  if(el("s-buys").checked) qs += "&buysOnly=1";
+
+  apiFetch("/api/wallets?"+qs)
+    .then(function(j){
+      if(!j.ok){ out.innerHTML = '<div class="err">'+esc(j.error)+'</div>'; return; }
+      var html = "";
+      if(j.keyMissing){ out.innerHTML = setupBox() + harvestBox(); return; }
+
+      var errs = Object.keys(j.errors||{});
+      if(errs.length){
+        html += '<div class="empty" style="margin-bottom:12px">'+errs.length+' von '+list.length+
+          ' Wallets konnten nicht abgefragt werden.<br><span class="mu2">'+esc(j.errors[errs[0]])+'</span></div>';
+      }
+
+      if(j.clusters && j.clusters.length){
+        html += '<div class="wsec" style="margin-top:0"><h3>Zusammenlauf — mehrere auf einmal</h3>'+
+          '<p class="sub">Eine Wallet kann sich irren. Zwei oder mehr, die unabhängig in denselben Coin gehen, sind das stärkste Signal, das dieses Werkzeug erzeugen kann — und das, was du von Hand nie sehen würdest.</p>'+
+          j.clusters.map(clusterRow).join("")+'</div>';
+      }
+
+      html += '<div class="wsec"'+(j.clusters && j.clusters.length ? '' : ' style="margin-top:0"')+'>'+
+        '<h3>Letzte Bewegungen</h3>'+
+        '<p class="sub">Neueste zuerst. Der Score rechts ist <b>unsere</b> Prüfung des Coins, nicht seine.</p>'+
+        (j.moves.length ? j.moves.map(moveRow).join("")
+          : '<div class="empty">Keine Bewegungen gefunden.<br><span class="mu2">Entweder haben sie gerade nichts gehandelt, oder die Adressen stimmen nicht.</span></div>')+
+        '</div>';
+
+      html += harvestBox();
+      out.innerHTML = html;
+
+      out.querySelectorAll("[data-addr]").forEach(function(node){
+        node.addEventListener("click", function(){
+          document.querySelector('.tab[data-view="scanner"]').click();
+          window.scrollTo(0,0);
+          scan(node.getAttribute("data-addr"));
+        });
+      });
+
+      sNotify(j.moves.filter(function(m){ return m.side === "kauf"; }));
+    })
+    .catch(function(e){ if(e && e.locked) return; out.innerHTML = '<div class="err">Netzwerkfehler: '+esc(e.message)+'</div>'; });
+}
+
+/** Jede Transaktion nur einmal melden - Signaturen sind eindeutig. */
+function sNotify(moves){
+  if(!el("w-notify") || !el("w-notify").checked) return;
+  if(!("Notification" in window) || Notification.permission !== "granted") return;
+  moves.filter(function(m){ return !sKnown[m.signature]; }).slice(0,3).forEach(function(m){
+    sKnown[m.signature] = Date.now();
+    try {
+      new Notification("SONAR · " + nameOf(m.wallet) + " hat gekauft", {
+        body: (m.symbol||"?") + (m.solAmount ? " für " + m.solAmount + " SOL" : "") +
+              (m.score != null ? " · unser Score " + m.score : ""),
+        tag: "sonar-move-" + m.signature
+      });
+    } catch(e){}
+  });
+  var grenze = Date.now() - 86400000, sauber = {};
+  Object.keys(sKnown).forEach(function(k){ if(sKnown[k] > grenze) sauber[k] = sKnown[k]; });
+  sKnown = sauber;
+  try { localStorage.setItem("sonar_moves_seen", JSON.stringify(sKnown)); } catch(e){}
+}
+
+el("s-addbtn").addEventListener("click", function(){
+  var addr = el("s-addr"), name = el("s-name");
+  var err = sAdd(addr.value, name.value);
+  if(err){ el("s-out").innerHTML = '<div class="err">'+esc(err)+'</div>' + harvestBox(); return; }
+  addr.value = ""; name.value = "";
+  renderWallets(); loadSpuren();
+});
+el("s-addr").addEventListener("keydown", function(e){ if(e.key === "Enter") el("s-addbtn").click(); });
+el("s-name").addEventListener("keydown", function(e){ if(e.key === "Enter") el("s-addbtn").click(); });
+el("s-reload").addEventListener("click", loadSpuren);
+el("s-buys").addEventListener("change", loadSpuren);
+el("s-auto").addEventListener("change", function(){
+  if(sAutoTimer){ clearInterval(sAutoTimer); sAutoTimer = null; }
+  // Drei Minuten, nicht eine: jede Prüfung kostet pro Wallet einen
+  // Helius-Aufruf, und das Freikontingent soll den Monat halten.
+  if(this.checked) sAutoTimer = setInterval(loadSpuren, 180000);
 });
 
 /* ---------- Wache: Stichworte und Wortwellen ---------- */
