@@ -1123,6 +1123,93 @@ async function main() {
     });
   });
 
+  console.log("\nDie Bilanz: verdient diese Wallet ueberhaupt Geld?");
+
+  // Eine Wallet, ein Coin: gekauft fuer solIn, verkauft fuer solOut.
+  const handel = (mint, tokIn, solIn, tokOut, solOut) => {
+    const txs = [{
+      signature: "b" + mint, timestamp: 1, tokenTransfers: [
+        { mint: mint, tokenAmount: tokIn, toUserAccount: "W", fromUserAccount: "P", tokenSymbol: mint },
+      ], nativeTransfers: [{ fromUserAccount: "W", toUserAccount: "P", amount: solIn * 1e9 }],
+    }];
+    if (tokOut > 0) txs.push({
+      signature: "s" + mint, timestamp: 2, tokenTransfers: [
+        { mint: mint, tokenAmount: tokOut, fromUserAccount: "W", toUserAccount: "P", tokenSymbol: mint },
+      ], nativeTransfers: [{ toUserAccount: "W", fromUserAccount: "P", amount: solOut * 1e9 }],
+    });
+    return txs;
+  };
+  const viele = (n, gewinnAnteil, x) => {
+    let txs = [];
+    for (let i = 0; i < n; i++) {
+      const gut = i < Math.round(n * gewinnAnteil);
+      txs = txs.concat(handel("m" + i, 1000, 1, 1000, gut ? x : 0.2));
+    }
+    return txs;
+  };
+
+  await check("wer verliert, faellt durch - egal wie frueh er dabei war", () => {
+    // Der teuerste blinde Fleck: zu jedem Coin, der laeuft, gibt es
+    // vierzig fruehe Kaeufer, und die meisten davon verlieren bei
+    // hundertsiebenundneunzig von zweihundert Versuchen. Sie standen in
+    // der Liste, WEIL der Coin lief - nicht, weil sie gut sind.
+    const b = wl.ledgerFromSwaps(viele(10, 0.1, 3), "W");
+    assert.strictEqual(b.genug, true);
+    assert.strictEqual(b.trades, 10);
+    assert.ok(b.quote <= 20, "Quote haette niedrig sein muessen: " + b.quote);
+  });
+
+  await check("wer gewinnt, wird als solcher erkannt", () => {
+    const b = wl.ledgerFromSwaps(viele(12, 0.75, 4), "W");
+    assert.ok(b.quote >= 70, "Quote zu niedrig: " + b.quote);
+    assert.ok(b.median > 1, "Median haette ueber 1 liegen muessen: " + b.median);
+  });
+
+  await check("zu wenige geschlossene Positionen heisst zu wenige - keine erfundene Quote", () => {
+    // Eine Trefferquote aus drei Trades ist Rauschen mit Nachkommastelle.
+    const b = wl.ledgerFromSwaps(viele(3, 1, 5), "W");
+    assert.strictEqual(b.genug, false);
+    assert.strictEqual(b.quote, null);
+    assert.strictEqual(b.trades, 3);
+  });
+
+  await check("wer nur haelt, hat nichts bewiesen", () => {
+    // Offene Positionen sind keine Gewinne. Wer zwanzig Coins kauft und
+    // keinen verkauft, hat zwanzig Wetten laufen, nicht zwanzig Treffer.
+    let txs = [];
+    for (let i = 0; i < 20; i++) txs = txs.concat(handel("h" + i, 1000, 1, 0, 0));
+    const b = wl.ledgerFromSwaps(txs, "W");
+    assert.strictEqual(b.genug, false);
+    assert.strictEqual(b.offen, 20);
+    assert.strictEqual(b.trades, 0);
+  });
+
+  await check("teilverkauf zaehlt nicht als geschlossen", () => {
+    // 30% verkauft heisst: er sitzt noch zu 70% drin. Das Ergebnis
+    // steht noch nicht fest.
+    const b = wl.ledgerFromSwaps(handel("x", 1000, 1, 300, 2), "W");
+    assert.strictEqual(b.trades, 0);
+    assert.strictEqual(b.offen, 1);
+  });
+
+  await check("die Versechsfachung wird eigens gezaehlt", () => {
+    // Fuer das Ziel "5 Euro rein, 30 Euro raus" zaehlt genau diese Zahl -
+    // und zwar nur bei tatsaechlich verkauften Positionen.
+    const b = wl.ledgerFromSwaps(viele(10, 0.5, 7), "W");
+    assert.strictEqual(b.sechsfach, 5);
+  });
+
+  await check("die Bilanz wirft nie, egal was reinkommt", () => {
+    [null, undefined, [], [{}], [{ tokenTransfers: [] }]].forEach((x) => {
+      const b = wl.ledgerFromSwaps(x, "W");
+      assert.strictEqual(b.genug, false);
+    });
+  });
+
+  await check("acht geschlossene Positionen sind die Untergrenze", () => {
+    assert.strictEqual(wl.BILANZ_MIN_TRADES, 8);
+  });
+
   await check("der Selbstsuche-Modus haengt nicht an einer Wortliste", () => {
     // Reine Verdrahtungspruefung: autoScout existiert und ist aufrufbar.
     assert.strictEqual(typeof wl.autoScout, "function");
