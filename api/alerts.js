@@ -87,8 +87,16 @@ module.exports = async function handler(req, res) {
     if (!dryRun && botToken && chatId) {
       try {
         const scouted = await autoScout({ coins: 4, established: 3, follow: 4 });
-        for (const cluster of (scouted.clusters || []).slice(0, 2)) {
-          if (cluster.wallets < 2) continue;
+        // Dieselbe Regel wie in der App, per Parameter steuerbar:
+        // ?minWallets=3&maxMcap=10000
+        const minWallets = Math.max(2, Number((req.query && req.query.minWallets) || 2) || 2);
+        const maxMcap = Math.max(0, Number((req.query && req.query.maxMcap) || 0) || 0);
+        for (const cluster of (scouted.clusters || []).slice(0, 3)) {
+          if (cluster.wallets < minWallets) continue;
+          if (maxMcap > 0) {
+            const mc = cluster.coin && cluster.coin.marketCap;
+            if (mc == null || mc > maxMcap) continue;
+          }
           // Nur frische Zusammenlaeufe - sonst meldet jeder Lauf denselben.
           if (!cluster.lastAt || Date.now() / 1000 - cluster.lastAt > windowMinutes * 60) continue;
           if (await sendTelegram(botToken, chatId, formatCluster(cluster))) clusterSent++;

@@ -2,6 +2,7 @@
 /**
  * GET /api/wallets?addrs=<adresse,adresse,...>
  * GET /api/wallets?discover=1
+ * GET /api/wallets?pulse=1&addrs=...
  *
  * Was haben die beobachteten Wallets zuletzt gekauft und verkauft?
  * Jeder Kauf kommt mit unserer eigenen Bewertung des Coins zurueck.
@@ -11,7 +12,7 @@
  * dann die Einrichtungsanleitung statt eines Fehlers.
  */
 
-const { watch, autoScout } = require("./_lib/wallets");
+const { watch, autoScout, pulseSignatures } = require("./_lib/wallets");
 const { send, fail, authorized, preflight } = require("./_lib/respond");
 
 module.exports = async function handler(req, res) {
@@ -20,6 +21,14 @@ module.exports = async function handler(req, res) {
 
   const q = req.query || {};
   try {
+    // pulse=1: nur die Frage "gab es etwas Neues?". Billig genug fuer
+    // einen 15-Sekunden-Takt. Nicht cachen - genau die Frische ist der
+    // Zweck.
+    if (q.pulse === "1" || q.pulse === "true") {
+      const beat = await pulseSignatures(q.addrs || "");
+      return send(res, 200, Object.assign({ ok: true }, beat), 0);
+    }
+
     // discover=1: die App sucht sich die Wallets selbst, statt dass
     // jemand Adressen eintraegt.
     if (q.discover === "1" || q.discover === "true") {
