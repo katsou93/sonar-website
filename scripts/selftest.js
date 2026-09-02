@@ -1263,6 +1263,38 @@ async function main() {
     assert.strictEqual(wl.musterVon(80, null, null, 3), "unklar");
   });
 
+  await check("ein Verkauf ueber 0 SOL eine Sekunde nach dem Kauf ist kein Verkauf", () => {
+    // Der Befund, der mich fast zur falschen Schlussfolgerung gebracht
+    // haette: bei allen fuenf live gefundenen Wallets folgte auf jeden
+    // Kauf eine Sekunde spaeter ein "Verkauf" ueber 0 SOL. Nach der
+    // ersten Rechnung waren das fuenf Totalverluste - in Wahrheit sieht
+    // man nur die halbe Bewegung, weil der Erloes auf einem
+    // Unterkonto landet.
+    const tx = (sig, mint, sol, ts, kauf) => ({
+      signature: sig, timestamp: ts,
+      tokenTransfers: [kauf
+        ? { mint: mint, tokenAmount: 1000, toUserAccount: "W", fromUserAccount: "P" }
+        : { mint: mint, tokenAmount: 1000, fromUserAccount: "W", toUserAccount: "P" }],
+      nativeTransfers: [kauf
+        ? { fromUserAccount: "W", toUserAccount: "P", amount: sol * 1e9 }
+        : { toUserAccount: "W", fromUserAccount: "P", amount: sol * 1e9 }],
+    });
+    let a = [];
+    for (let i = 0; i < 12; i++) { a.push(tx("b" + i, "m" + i, 0.5, 1000, true)); a.push(tx("s" + i, "m" + i, 0, 1001, false)); }
+    const b = wl.ledgerFromSwaps(a, "W");
+    assert.strictEqual(b.trades, 0, "das darf keine abgeschlossene Position sein");
+    assert.strictEqual(b.unklar, 12);
+    assert.strictEqual(b.muster, "unlesbar", "so handelt kein Mensch - das ist eine Maschine");
+
+    // Aber: derselbe Nullverkauf NACH zwei Stunden ist ein echter
+    // Totalverlust und gehoert sehr wohl in die Bilanz.
+    let c = [];
+    for (let i = 0; i < 12; i++) { c.push(tx("b" + i, "n" + i, 0.5, 1000, true)); c.push(tx("s" + i, "n" + i, 0, 9000, false)); }
+    const d = wl.ledgerFromSwaps(c, "W");
+    assert.strictEqual(d.trades, 12);
+    assert.strictEqual(d.quote, 0);
+  });
+
   await check("zwanzig Minuten ist die Grenze zum Dumpen", () => {
     assert.strictEqual(wl.DUMP_MINUTEN, 20);
   });
