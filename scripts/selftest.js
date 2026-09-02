@@ -801,6 +801,108 @@ async function main() {
     assert.strictEqual(coin.buzzLevel, "substanz");
   });
 
+  console.log("\nSpuren: Wallets verfolgen");
+  const wl = require("../api/_lib/wallets");
+  const W = "M2mx93ekt1fmXSVkTrUL9xVFHkmME8HTUi5Cyc5aF7K";
+  const MEME = "MemeMint111111111111111111111111111111111111";
+  const swap = (opts) => ({
+    signature: opts.sig, timestamp: opts.ts, source: opts.source || "PUMP_FUN",
+    nativeTransfers: opts.native || [], tokenTransfers: opts.tokens || [],
+  });
+
+  await check("ein Kauf wird als Kauf erkannt, samt SOL-Einsatz", () => {
+    const move = wl.buyFromSwap(swap({
+      sig: "s1", ts: 1770000000,
+      native: [{ fromUserAccount: W, toUserAccount: "pool", amount: 2500000000 }],
+      tokens: [{ fromUserAccount: "pool", toUserAccount: W, mint: MEME, tokenSymbol: "RACC", tokenAmount: 1250000 }],
+    }), W);
+    assert.strictEqual(move.side, "kauf");
+    assert.strictEqual(move.mint, MEME);
+    assert.strictEqual(move.solAmount, 2.5);
+  });
+
+  await check("ein Verkauf wird als Verkauf erkannt", () => {
+    const move = wl.buyFromSwap(swap({
+      sig: "s2", ts: 1770000100,
+      native: [{ fromUserAccount: "pool", toUserAccount: W, amount: 4100000000 }],
+      tokens: [{ fromUserAccount: W, toUserAccount: "pool", mint: MEME, tokenSymbol: "RACC", tokenAmount: 1250000 }],
+    }), W);
+    assert.strictEqual(move.side, "verkauf");
+    assert.strictEqual(move.solAmount, 4.1);
+  });
+
+  await check("USDC in SOL zu tauschen ist kein Coin-Kauf", () => {
+    // Sonst meldet die App jedes Nachladen als "er hat was gekauft".
+    const move = wl.buyFromSwap(swap({
+      sig: "s3", ts: 1770000200, source: "JUPITER",
+      native: [{ fromUserAccount: "pool", toUserAccount: W, amount: 1000000000 }],
+      tokens: [{ fromUserAccount: W, toUserAccount: "pool", mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", tokenSymbol: "USDC", tokenAmount: 200 }],
+    }), W);
+    assert.strictEqual(move, null);
+  });
+
+  await check("die Bewegung einer FREMDEN Wallet zaehlt nicht als unsere", () => {
+    // Ein Swap beruehrt viele Konten. Nur was bei DER beobachteten Wallet
+    // ankommt, ist ihr Kauf.
+    const move = wl.buyFromSwap(swap({
+      sig: "s4", ts: 1770000300,
+      native: [{ fromUserAccount: "jemand", toUserAccount: "pool", amount: 5000000000 }],
+      tokens: [{ fromUserAccount: "pool", toUserAccount: "jemandAnderes", mint: MEME, tokenSymbol: "RACC", tokenAmount: 999 }],
+    }), W);
+    assert.strictEqual(move, null);
+  });
+
+  await check("nur echte Solana-Adressen werden angenommen", () => {
+    assert.ok(wl.isAddress(W));
+    assert.ok(!wl.isAddress("0x1234567890abcdef1234567890abcdef12345678"), "Ethereum-Adresse abgelehnt");
+    assert.ok(!wl.isAddress("viel zu kurz"));
+    assert.ok(!wl.isAddress(W + "0"), "0 ist kein Base58-Zeichen");
+  });
+
+  await check("die Wallet-Liste entdoppelt und deckelt bei acht", () => {
+    const viele = new Array(20).fill(W).join(",");
+    assert.deepStrictEqual(wl.parseAddresses(viele), [W], "dieselbe Adresse zwanzigmal ist eine Adresse");
+    assert.deepStrictEqual(wl.parseAddresses("muell, " + W + ", 0xabc"), [W]);
+  });
+
+  await check("zwei Wallets im selben Coin ergeben einen Zusammenlauf", () => {
+    const cl = wl.clusters([
+      { side: "kauf", mint: "A", wallet: "w1", solAmount: 2, timestamp: 100, symbol: "RACC" },
+      { side: "kauf", mint: "A", wallet: "w2", solAmount: 5, timestamp: 140, symbol: "RACC" },
+      { side: "kauf", mint: "B", wallet: "w1", solAmount: 1, timestamp: 150, symbol: "XYZ" },
+    ]);
+    assert.strictEqual(cl.length, 1, "B hat nur eine Wallet und ist kein Zusammenlauf");
+    assert.strictEqual(cl[0].wallets, 2);
+    assert.strictEqual(cl[0].solTotal, 7);
+  });
+
+  await check("dieselbe Wallet zweimal ist KEIN Zusammenlauf", () => {
+    // Nachkaufen ist kein zweiter Beleg - es ist derselbe Beleg.
+    const cl = wl.clusters([
+      { side: "kauf", mint: "A", wallet: "w1", solAmount: 2, timestamp: 100 },
+      { side: "kauf", mint: "A", wallet: "w1", solAmount: 3, timestamp: 200 },
+    ]);
+    assert.strictEqual(cl.length, 0);
+  });
+
+  await check("Verkaeufe bilden keinen Zusammenlauf", () => {
+    const cl = wl.clusters([
+      { side: "verkauf", mint: "A", wallet: "w1", solAmount: 2, timestamp: 100 },
+      { side: "verkauf", mint: "A", wallet: "w2", solAmount: 3, timestamp: 200 },
+    ]);
+    assert.strictEqual(cl.length, 0);
+  });
+
+  await check("ohne Helius-Schluessel antwortet die Verfolgung sauber statt zu werfen", () => {
+    const alt = process.env.HELIUS_API_KEY;
+    delete process.env.HELIUS_API_KEY;
+    return wl.watch(W).then((res) => {
+      if (alt) process.env.HELIUS_API_KEY = alt;
+      assert.strictEqual(res.keyMissing, true);
+      assert.deepStrictEqual(res.moves, []);
+    });
+  });
+
   console.log(failures === 0 ? "\nAlle Tests bestanden.\n" : "\n" + failures + " Test(s) fehlgeschlagen.\n");
   process.exit(failures === 0 ? 0 : 1);
 }
