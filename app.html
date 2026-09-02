@@ -263,6 +263,13 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
 .scout .adr{font-family:var(--mono);font-size:13px;color:var(--tx)}
 .scout .det{font-size:12px;color:var(--mu2);margin-top:4px;line-height:1.5}
 .scout .det b{color:var(--mu);font-weight:600}
+.kind{display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  padding:2px 7px;border-radius:4px;margin-left:8px;vertical-align:2px}
+.kind.position{background:rgba(20,241,149,.14);color:var(--grn)}
+.kind.klein{background:rgba(255,197,49,.13);color:var(--yel)}
+.kind.streuer{background:rgba(255,255,255,.05);color:var(--mu2)}
+.scout.streuer{opacity:.62}
+.scout.position{border-color:rgba(20,241,149,.32);background:rgba(20,241,149,.04)}
 @media(max-width:640px){.scout{grid-template-columns:auto 1fr}}
 @media(max-width:640px){.move,.cl{grid-template-columns:1fr;gap:6px}.move .amt,.move .sub{text-align:left}}
 .terms{display:flex;gap:6px;flex-wrap:wrap;padding:2px 2px 0}
@@ -938,15 +945,23 @@ function harvestBox(){
  * Ein Kundschafter: eine Wallet, die bei MEHREREN Coins frueh dabei war,
  * die danach gelaufen sind. Einmal ist Glueck, zweimal ist ein Muster.
  */
+var KIND_LABEL = { position: "echte Position", klein: "kleiner Einsatz", streuer: "Streuer" };
+
 function scoutRow(sc){
   var det = sc.coins.map(function(c){
-    return esc(c.symbol||"?") + " <b>als " + c.rank + ".</b>";
+    return esc(c.symbol||"?") + " <b>als " + c.rank + ".</b>" +
+      (c.stage === "etabliert" ? ' <span class="mu2">(etabliert)</span>' : '');
   }).join(" · ");
-  return '<div class="scout">'+
+  var kind = sc.kind || "streuer";
+  return '<div class="scout '+esc(kind)+'">'+
     '<div class="hits">'+sc.hits+'</div>'+
-    '<div style="min-width:0"><div class="adr">'+esc(shortAddr(sc.wallet))+'</div>'+
-      '<div class="det">früh dabei bei: '+det+'</div></div>'+
-    '<button class="btn btn-g btn-sm" data-follow="'+esc(sc.wallet)+'">verfolgen</button>'+
+    '<div style="min-width:0"><div class="adr">'+esc(shortAddr(sc.wallet))+
+      '<span class="kind '+esc(kind)+'">'+esc(KIND_LABEL[kind]||kind)+'</span></div>'+
+      '<div class="det">früh dabei bei: '+det+'</div>'+
+      '<div class="det">Einsatz beim Einstieg: <b>'+(sc.medianSol||0)+' SOL</b> im Mittel'+
+        (sc.onEstablished ? ' · <b style="color:var(--grn)">'+sc.onEstablished+'× in etablierten Coins</b>' : '')+
+      '</div></div>'+
+    '<button class="btn '+(kind==="position"?"btn-p":"btn-g")+' btn-sm" data-follow="'+esc(sc.wallet)+'">verfolgen</button>'+
   '</div>';
 }
 
@@ -954,7 +969,8 @@ function scoutRow(sc){
 function loadScouts(){
   var out = el("s-out");
   out.innerHTML = '<div class="empty">Suche läuft — die App schaut nach, welche Coins zuletzt gelaufen sind '+
-    'und wer sie früh gekauft hat. Das dauert etwa 10 Sekunden.</div>';
+    '(frische und etablierte) und wer sie vorher gekauft hat.<br>'+
+    '<span class="mu2">Beim ersten Mal etwa 20 Sekunden, danach deutlich schneller.</span></div>';
 
   apiFetch("/api/wallets?discover=1")
     .then(function(j){
@@ -962,18 +978,33 @@ function loadScouts(){
       if(j.keyMissing){ out.innerHTML = setupBox() + harvestBox(); return; }
 
       var html = "";
+      var alle = j.scouts || [];
+      var echte = alle.filter(function(x){ return x.kind !== "streuer"; });
+      var streuer = alle.filter(function(x){ return x.kind === "streuer"; });
+
       html += '<div class="wsec" style="margin-top:0"><h3>Kundschafter — von der App selbst gefunden</h3>'+
-        '<p class="sub">Die App nimmt die Coins, die in den letzten Tagen wirklich gelaufen sind, und schaut nach, '+
-        '<b>wer sie gekauft hat, als sie noch nichts waren</b>. Wer bei mehreren dabei war, steht hier. '+
-        'Die Zahl links ist die Anzahl der Treffer — einmal früh dabei zu sein ist Glück, mehrmals nicht.</p>'+
-        (j.scouts && j.scouts.length
-          ? j.scouts.map(scoutRow).join("")
-          : '<div class="empty">Keine Wallet war bei mehreren Gewinnern früh dabei.<br>'+
-            '<span class="mu2">Das passiert, wenn die letzten Läufer nichts gemeinsam hatten — ein ehrliches Ergebnis, kein Fehler.</span></div>')+
+        '<p class="sub">Die App nimmt die Coins, die gelaufen sind — <b>frische Launches und etablierte</b> — und schaut nach, '+
+        'wer sie vorher gekauft hat. Wer bei mehreren dabei war, steht hier. Die Zahl links sind die Treffer: '+
+        'einmal früh dabei zu sein ist Glück, mehrmals nicht.</p>'+
+        '<p class="sub"><b style="color:var(--yel)">Der wichtigste Unterschied steht rechts neben der Adresse.</b> '+
+        'Beim ersten Test fand die Suche drei Wallets mit echten Treffern — die aber pro Position <b>0,003 bis 0,09 SOL</b> '+
+        'setzten, in Coins, die null bis zwei Minuten alt waren. Das sind <b>Streuer</b>: sie kaufen im Minutentakt hunderte '+
+        'frische Launches für Centbeträge, und einer davon geht ab. Ihre Rechnung geht nur mit hundert Mini-Wetten auf — '+
+        'wer denen mit ernsthaften Beträgen folgt, verliert. Deshalb misst die App jetzt, <b>wie viel sie selbst gesetzt haben</b>.</p>'+
+        (echte.length
+          ? '<h3 style="margin-top:18px">Mit echtem Einsatz — diesen kann man folgen</h3>'+echte.map(scoutRow).join("")
+          : '<div class="empty">Keine Wallet mit ernsthaftem Einsatz gefunden.<br>'+
+            '<span class="mu2">Ein ehrliches Ergebnis: gerade laufen offenbar nur Streuer richtig.</span></div>')+
+        (streuer.length
+          ? '<h3 style="margin-top:22px">Streuer — nur zur Kenntnis</h3>'+
+            '<p class="sub">Mehrfach früh dabei, aber mit Centbeträgen. Nicht zum Nachmachen — nur damit du siehst, dass die Suche funktioniert.</p>'+
+            streuer.map(scoutRow).join("")
+          : '')+
         ((j.winners && j.winners.length)
           ? '<p class="sub" style="margin-top:12px">Untersucht: '+j.winners.map(function(w){
               return esc(w.symbol||"?") + " " + pctTxt(w.priceChangeH24,0) +
-                ' <span class="mu2">(' + w.buyers + ' frühe Käufer)</span>';
+                ' <span class="mu2">(' + (w.stage === "etabliert" ? "etabliert, " : "") +
+                w.buyers + ' Käufer vorher)</span>';
             }).join(" · ")+'</p>'
           : '<p class="sub" style="margin-top:12px">Es ist gerade kein Coin gelaufen, der die Kriterien erfüllt.</p>')+
         '</div>';
@@ -985,8 +1016,9 @@ function loadScouts(){
       }
 
       html += '<div class="wsec"><h3>Was sie gerade kaufen</h3>'+
-        '<p class="sub">Die letzten Käufe der gefundenen Wallets, mit <b>unserer</b> Prüfung daneben. '+
-        'Das ist ein Hinweis, wo du hinschauen solltest — keine Empfehlung. Wer kopiert, ist immer hinten dran.</p>'+
+        '<p class="sub">Die letzten Käufe der gefundenen Wallets, mit <b>unserer</b> Prüfung daneben — '+
+        'zuerst die mit echtem Einsatz. Das ist ein Hinweis, wo du hinschauen solltest, keine Empfehlung. '+
+        'Wer kopiert, ist immer hinten dran.</p>'+
         ((j.moves && j.moves.length) ? j.moves.map(moveRow).join("")
           : '<div class="empty">Die Kundschafter haben zuletzt nichts gekauft.</div>')+
         '</div>';
