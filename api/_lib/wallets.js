@@ -664,18 +664,40 @@ function ledgerFromSwaps(txs, wallet) {
 }
 
 /** Die Bilanz einer Wallet holen. Ein Helius-Aufruf, zwoelf Stunden gecacht. */
-async function walletLedger(wallet) {
+async function walletLedger(wallet, opts) {
   if (!hasKey()) return { trades: 0, genug: false, quote: null, median: null };
   const key = process.env.HELIUS_API_KEY;
-  const url =
-    HELIUS + "/v0/addresses/" + wallet + "/transactions?api-key=" + encodeURIComponent(key) +
-    "&type=SWAP&limit=100";
+  const seiten = (opts && opts.pages) || 3;
+
+  // Warum mehrere Seiten? Live gemessen: eine Wallet verkaufte einen
+  // Coin in neunzehn Tranchen, der zugehoerige Kauf lag aber schon
+  // ausserhalb der letzten hundert Transaktionen. Ergebnis: null
+  // abgeschlossene Positionen, obwohl der Mensch staendig handelt. Bei
+  // einem aktiven Haendler liegt fast jede Position halb ausserhalb
+  // eines Hundert-Zeilen-Fensters - man muss weiter zurueckschauen,
+  // sonst misst man nur den Fensterrand.
   try {
-    const txs = await cached("ledger:" + wallet, 12 * 60 * 60 * 1000, async () => {
-      const data = await getJson(url, { source: "helius", timeoutMs: 9000, retries: 0 });
-      return Array.isArray(data) ? data : [];
+    const txs = await cached("ledger:" + wallet + ":" + seiten, 12 * 60 * 60 * 1000, async () => {
+      let alle = [];
+      let before = null;
+      for (let i = 0; i < seiten; i++) {
+        let url =
+          HELIUS + "/v0/addresses/" + wallet + "/transactions?api-key=" + encodeURIComponent(key) +
+          "&type=SWAP&limit=100";
+        if (before) url += "&before=" + before;
+        const data = await getJson(url, { source: "helius", timeoutMs: 9000, retries: 0 });
+        const seite = Array.isArray(data) ? data : [];
+        alle = alle.concat(seite);
+        if (seite.length < 100) break;
+        before = seite[seite.length - 1] && seite[seite.length - 1].signature;
+        if (!before) break;
+        await new Promise((r) => setTimeout(r, 550));
+      }
+      return alle;
     });
-    return ledgerFromSwaps(txs, wallet);
+    const b = ledgerFromSwaps(txs, wallet);
+    b.gesehen = txs.length;
+    return b;
   } catch (err) {
     return { trades: 0, genug: false, quote: null, median: null, fehler: true };
   }
@@ -826,29 +848,14 @@ async function findScouts(opts) {
   const einmal = scouts.filter((x) => x.tier === "einmal").slice(0, platz);
   const gereiht = mehrfach.concat(einmal);
 
-  // Und jetzt die Frage, die vorher nie gestellt wurde: verdienen diese
-  // Leute eigentlich Geld? Ein Aufruf pro Kandidat, zwoelf Stunden
-  // gecacht - sequenziell wegen der zwei Anfragen pro Sekunde.
-  // Gedeckelt und mit Uhr: die Coin-Pruefung oben hat schon Sekunden
-  // gekostet, und Vercel bricht die Funktion nach dreissig ab. Lieber
-  // fuenf gepruefte Wallets als ein Timeout mit null Ergebnis.
-  if (options.bilanz !== false) {
-    const frist = Date.now() + (options.bilanzMs || 9000);
-    const wieviele = Math.min(gereiht.length, options.bilanzMax || 5);
-    for (let i = 0; i < wieviele; i++) {
-      if (Date.now() > frist) break;
-      if (i > 0) await new Promise((r) => setTimeout(r, 550));
-      gereiht[i].bilanz = await walletLedger(gereiht[i].wallet);
-    }
-  }
+  // Die Bilanz wird bewusst NICHT hier geholt. Sie braucht drei Abfragen
+  // pro Wallet, und die Coin-Pruefung oben hat schon die Haelfte der
+  // dreissig Sekunden verbraucht, die Vercel einer Funktion gibt. Sie
+  // laeuft stattdessen als eigener Aufruf (/api/ledger), sobald die
+  // Liste steht: erst erscheinen die Kundschafter, eine Sekunde spaeter
+  // fuellen sich ihre Zahlen.
 
-  // Wer nachweislich verliert, wird nicht vorgeschlagen - egal wie frueh
-  // er einmal dabei war. Wer zu wenige geschlossene Positionen hat,
-  // bleibt drin, aber mit dem Vermerk "ungeprueft": ihn rauszuwerfen
-  // waere genauso gelogen wie ihn zu empfehlen.
-  const bestanden = gereiht.filter((x) => !(x.bilanz && x.bilanz.genug && x.bilanz.quote < 25));
-
-  return { keyMissing: false, scouts: bestanden, winners: checked, verworfen: gereiht.length - bestanden.length };
+  return { keyMissing: false, scouts: gereiht, winners: checked };
 }
 
 /**
