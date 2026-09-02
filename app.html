@@ -430,6 +430,7 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
       <button class="btn btn-p btn-sm" id="s-scout">Kundschafter suchen</button>
       <div class="hspace" style="flex:1"></div>
       <label class="autolabel"><input type="checkbox" id="s-buys" checked> nur Käufe</label>
+      <label class="autolabel"><input type="checkbox" id="s-notify"> Benachrichtigung</label>
       <label class="autolabel"><input type="checkbox" id="s-auto"> alle 3 min</label>
       <button class="btn btn-g btn-sm" id="s-reload">Jetzt prüfen</button>
     </div>
@@ -1098,9 +1099,21 @@ function loadSpuren(){
     .catch(function(e){ if(e && e.locked) return; out.innerHTML = '<div class="err">Netzwerkfehler: '+esc(e.message)+'</div>'; });
 }
 
+/**
+ * Ein Schalter fuer beide Reiter.
+ *
+ * Wache und Spuren melden dasselbe: "hier passiert gerade etwas". Zwei
+ * getrennte Haken dafuer waeren nur eine Falle - man setzt einen und
+ * wundert sich, warum es still bleibt.
+ */
+function notifyWanted(){
+  var a = el("w-notify"), b = el("s-notify");
+  return !!((a && a.checked) || (b && b.checked));
+}
+
 /** Jede Transaktion nur einmal melden - Signaturen sind eindeutig. */
 function sNotify(moves){
-  if(!el("w-notify") || !el("w-notify").checked) return;
+  if(!notifyWanted()) return;
   if(!("Notification" in window) || Notification.permission !== "granted") return;
   moves.filter(function(m){ return !sKnown[m.signature]; }).slice(0,3).forEach(function(m){
     sKnown[m.signature] = Date.now();
@@ -1128,6 +1141,13 @@ el("s-addbtn").addEventListener("click", function(){
 el("s-addr").addEventListener("keydown", function(e){ if(e.key === "Enter") el("s-addbtn").click(); });
 el("s-name").addEventListener("keydown", function(e){ if(e.key === "Enter") el("s-addbtn").click(); });
 el("s-scout").addEventListener("click", loadScouts);
+el("s-notify").addEventListener("change", function(){
+  if(!this.checked) return;
+  if(!("Notification" in window)){ this.checked = false; return; }
+  if(Notification.permission === "default") Notification.requestPermission();
+  var other = el("w-notify");
+  if(other) other.checked = true;
+});
 el("s-reload").addEventListener("click", loadSpuren);
 el("s-buys").addEventListener("change", loadSpuren);
 el("s-auto").addEventListener("change", function(){
@@ -1368,7 +1388,7 @@ function loadWache(){
 
 /** Benachrichtigen - aber jeden Coin nur einmal, sonst pingt es im Kreis. */
 function wNotify(hits){
-  if(!el("w-notify").checked) return;
+  if(!notifyWanted()) return;
   if(!("Notification" in window) || Notification.permission !== "granted") return;
   var neu = hits.filter(function(it){ return !wKnown[it.address]; });
   neu.slice(0,3).forEach(function(it){
@@ -1410,6 +1430,31 @@ el("w-auto").addEventListener("change", function(){
   // Bewusst OHNE Pruefung auf den aktiven Reiter: eine Wache, die nur
   // waehrend man hinschaut wacht, ist keine Wache.
   if(this.checked) wAutoTimer = setInterval(loadWache, 60000);
+});
+
+/* ---------- Einstellungen ueberleben das Neuladen ---------- */
+
+/**
+ * Eine Wache, die man nach jedem Neuladen neu einschalten muss, ist keine
+ * Wache. Die Haken werden deshalb gespeichert und beim Start wieder
+ * gesetzt - inklusive der Timer, die daran haengen.
+ */
+["w-notify", "s-notify", "w-auto", "s-auto", "s-buys", "j-auto"].forEach(function(id){
+  var box = el(id);
+  if(!box) return;
+  var key = "sonar_opt_" + id;
+  box.addEventListener("change", function(){
+    try { localStorage.setItem(key, box.checked ? "1" : "0"); } catch(e){}
+  });
+  var saved = null;
+  try { saved = localStorage.getItem(key); } catch(e){}
+  if(saved === null) return;
+  var want = saved === "1";
+  if(box.checked === want) return;
+  box.checked = want;
+  // Das change-Ereignis von Hand ausloesen, damit die Timer und die
+  // Berechtigungsabfrage genauso laufen wie bei einem echten Klick.
+  box.dispatchEvent(new Event("change"));
 });
 
 /* ---------- scanner ---------- */
