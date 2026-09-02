@@ -1032,14 +1032,17 @@ function geprueft(j){
  * was die Wallet mit ihren ABGESCHLOSSENEN Positionen gemacht hat.
  */
 var BILANZ = {};
+var LETZTE_SCOUTS = [];
 
 /** Und was hat SEIN Signal DIR gebracht? Die ehrlichere der beiden Zahlen. */
 function eigenTxt(wallet){
   var e = walletBilanzEigen(wallet);
   if(!e) return '';
-  var farbe = e.quote >= 40 ? "var(--grn)" : e.quote >= 20 ? "var(--yel)" : "var(--red)";
+  // Faktor fuenf ist selten: jeder fuenfte Treffer ist bereits sehr gut,
+  // jeder zehnte noch brauchbar. Die alten Schwellen waren fuer "+20%".
+  var farbe = e.quote >= 20 ? "var(--grn)" : e.quote >= 10 ? "var(--yel)" : "var(--red)";
   return '<div class="det">Für dich: <b style="color:'+farbe+'">'+e.quote+'%</b> seiner '+e.n+
-    ' Meldungen liefen danach +20%</div>';
+    ' Meldungen erreichten '+ZIEL_X+'×</div>';
 }
 
 function bilanzTxt(b){
@@ -1108,7 +1111,14 @@ function ladeBilanzen(wallets){
   apiFetch("/api/ledger?addrs=" + encodeURIComponent(offen.join(",")))
     .then(function(j){
       if(!j || !j.ledgers) return;
-      Object.keys(j.ledgers).forEach(function(w){ BILANZ[w] = j.ledgers[w]; });
+      Object.keys(j.ledgers).forEach(function(w){
+        BILANZ[w] = j.ledgers[w];
+        // Und hier wird aus einem Fund ein Bestand: wer geprüft ist,
+        // bleibt gespeichert — bestanden oder durchgefallen. Ohne das
+        // prüft die App morgen denselben Bot noch einmal.
+        var sc = (LETZTE_SCOUTS || []).find(function(x){ return x.wallet === w; });
+        if(sc) rosterAufnehmen(sc, j.ledgers[w]);
+      });
       document.querySelectorAll("[data-bil]").forEach(function(node){
         var w = node.getAttribute("data-bil");
         var b = BILANZ[w];
@@ -1156,6 +1166,60 @@ var MUSTER_TXT = {
 };
 function musterTxt(m){ return MUSTER_TXT[m] || ''; }
 
+/**
+ * Der Bestand, sichtbar gemacht.
+ *
+ * Ohne diese Ansicht ist "die App lernt" eine Behauptung. Mit ihr
+ * kannst du nachsehen, wen sie behalten hat, wen sie aussortiert hat
+ * und warum - und ob die Liste über die Woche tatsächlich wächst.
+ */
+function bestandBox(){
+  var aktiv = rosterAktiv().sort(function(a,b){ return rosterRang(b) - rosterRang(a); });
+  var raus = rosterListe().filter(function(r){ return r.status !== "aktiv"; });
+
+  var kopf = '<div class="wsec" style="margin-top:0"><h3>Dein Bestand — geprüfte Leute</h3>'+
+    '<p class="sub">Wer die Prüfung besteht, bleibt hier stehen und wird alle acht Stunden nachgerechnet. '+
+    'Die Liste wächst mit jedem Durchlauf — und sie sortiert aus: wer zum Dumper wird, absackt oder '+
+    'zehn Meldungen ohne einen einzigen '+ZIEL_X+'×-Treffer liefert, fliegt raus. '+
+    '<b>Ziel ist immer dasselbe: 5 € rein, '+(5*ZIEL_X)+' € raus, in ein bis zwei Tagen.</b></p>';
+
+  if(!aktiv.length && !raus.length){
+    return kopf + '<div class="empty">Noch niemand geprüft.<br>'+
+      '<span class="mu2">Die erste Prüfung läuft gleich mit — sie braucht ein paar Sekunden pro Wallet.</span></div></div>';
+  }
+
+  var liste = aktiv.map(function(r){
+    var eigen = r.meldungen >= 4
+      ? ' · <b>'+Math.round((r.treffer/r.meldungen)*100)+'%</b> von '+r.meldungen+' Meldungen erreichten '+ZIEL_X+'×'
+      : (r.meldungen ? ' · '+r.meldungen+' Meldungen, noch keine Auswertung' : '');
+    return '<div class="scout '+esc(r.kind||"klein")+'">'+
+      '<div class="hits">'+Math.round(rosterRang(r))+'</div>'+
+      '<div style="min-width:0"><div class="adr">'+esc(shortAddr(r.wallet))+
+        '<span class="kind '+esc(r.kind||"klein")+'">'+esc(KIND_LABEL[r.kind]||r.kind||"")+'</span></div>'+
+        '<div class="det">'+esc(r.grund||"")+'</div>'+
+        '<div class="det">seit '+tageHer(r.seit)+' im Bestand'+eigen+'</div>'+
+      '</div>'+
+      '<button class="btn btn-g btn-sm" data-follow="'+esc(r.wallet)+'">verfolgen</button>'+
+    '</div>';
+  }).join("");
+
+  var rausTxt = raus.length
+    ? '<p class="sub" style="margin-top:14px"><b>Aussortiert ('+raus.length+'):</b> '+
+      raus.slice(0,6).map(function(r){ return esc(shortAddr(r.wallet))+' <span class="mu2">— '+esc(r.grund||"")+'</span>'; }).join(" · ")+
+      '</p>'
+    : '';
+
+  return kopf + (aktiv.length ? liste : '<div class="empty">Noch niemand hat die Prüfung bestanden.<br>'+
+      '<span class="mu2">Das ist ein Ergebnis: von den bisher geprüften waren alle Bots oder Dumper.</span></div>') +
+    rausTxt + '</div>';
+}
+
+function tageHer(ts){
+  if(!ts) return "kurzem";
+  var t = Math.floor((Date.now() - ts) / 86400000);
+  return t < 1 ? "heute" : t === 1 ? "gestern" : t + " Tagen";
+}
+
 /** Die Selbstsuche: Kundschafter finden und zeigen, was sie kaufen. */
 function loadScouts(){
   var out = el("s-out");
@@ -1173,7 +1237,9 @@ function loadScouts(){
       var echte = alle.filter(function(x){ return x.kind !== "streuer"; });
       var streuer = alle.filter(function(x){ return x.kind === "streuer"; });
 
-      html += '<div class="wsec" style="margin-top:0"><h3>Kundschafter — von der App selbst gefunden</h3>'+
+      html += bestandBox();
+
+      html += '<div class="wsec"><h3>Kundschafter — von der App selbst gefunden</h3>'+
         '<p class="sub">Die App nimmt die Coins, die gelaufen sind — <b>frische Launches und etablierte</b> — und schaut nach, '+
         'wer sie vorher gekauft hat. Wer bei mehreren dabei war, steht hier. Die Zahl links sind die Treffer: '+
         'einmal früh dabei zu sein ist Glück, mehrmals nicht.</p>'+
@@ -1225,7 +1291,17 @@ function loadScouts(){
       out.innerHTML = html;
 
       // Adressen merken, damit der Puls auch ohne eigene Wallets laeuft.
-      sScoutAddrs = (j.scouts || []).slice(0, 4).map(function(x){ return x.wallet; });
+      // Beobachtet werden die GEPRÜFTEN aus dem Bestand — und nur
+      // ergänzend die frisch Gefundenen. Vorher hing der Puls am
+      // letzten Zufallsfund und verlor jeden, den er kannte.
+      var best = rosterAktiv().sort(function(a,b){ return rosterRang(b) - rosterRang(a); })
+        .slice(0, 4).map(function(r){ return r.wallet; });
+      if(best.length < 4){
+        (j.scouts || []).forEach(function(x){
+          if(best.length < 4 && best.indexOf(x.wallet) === -1 && !istVerlierer(BILANZ[x.wallet])) best.push(x.wallet);
+        });
+      }
+      sScoutAddrs = best;
       // Der Fehler, der die Meldungen still gemacht hat: hier lief nur der
       // Zusammenlauf-Alarm. Wer keine eigenen Wallets eingetragen hat -
       // also der Normalfall - bekam Einzelkaeufe nie gemeldet, und die
@@ -1233,7 +1309,14 @@ function loadScouts(){
       // Erst die Liste zeigen, dann die Bilanzen nachreichen. Sie
       // brauchen drei Abfragen pro Wallet - darauf zu warten hiesse,
       // zwanzig Sekunden auf einen leeren Bildschirm zu schauen.
-      ladeBilanzen((j.scouts||[]).slice(0,5).map(function(x){ return x.wallet; }));
+      LETZTE_SCOUTS = j.scouts || [];
+      // Neue Kandidaten UND die, deren Prüfung zu alt ist. Ein Bestand,
+      // der nur wächst, ist keiner: wer zum Dumper wird oder absackt,
+      // muss auffliegen.
+      var neue = (j.scouts||[]).filter(function(x){ return !ROSTER.wallets[x.wallet]; })
+        .slice(0,3).map(function(x){ return x.wallet; });
+      var faellig = rosterFaellig().slice(0, 2);
+      ladeBilanzen(neue.concat(faellig));
 
       sNotify((j.moves || []).filter(function(m){ return m.side === "kauf"; }));
       clusterAlarm(j.clusters);
@@ -1553,6 +1636,135 @@ function sPulse(){
  * Alles bleibt im Browser. Es ist DEINE Lernkurve, nicht die von
  * irgendwem, und sie kostet nichts.
  */
+/* ------------------------------------------------------------------ *
+ * Der Bestand: die Leute, die sich bewaehrt haben
+ * ------------------------------------------------------------------ */
+
+/**
+ * Bis hierher fing jeder Durchlauf bei null an. Die App suchte Wallets,
+ * pruefte sie, zeigte sie - und beim naechsten Neuladen war alles wieder
+ * weg. Alles, was ueber einen Menschen gelernt wurde, verfiel im
+ * Minutentakt.
+ *
+ * Der Bestand dreht das um. Wer die Pruefung besteht, kommt hier hinein
+ * und BLEIBT. Die Liste waechst mit jedem Durchlauf: heute zwei
+ * geprueft Leute, naechste Woche neun, in einem Monat vielleicht
+ * dreissig. Und weil sie waechst, waechst auch die Wahrscheinlichkeit,
+ * dass mehrere davon gleichzeitig in denselben Coin gehen - das
+ * staerkste Signal, das dieses Werkzeug ueberhaupt erzeugen kann.
+ *
+ * Genauso wichtig ist die Gegenrichtung: alle paar Stunden wird jeder
+ * im Bestand nachgerechnet. Wer zum Dumper wird, wer absackt, wer nicht
+ * mehr handelt, fliegt raus. Ein Bestand, der nur waechst, ist kein
+ * Bestand, sondern eine Halde.
+ *
+ * Alles liegt im Browser. Das ist keine Notloesung, sondern die einzige
+ * Variante, die dauerhaft nichts kostet - und es sind ohnehin DEINE
+ * Daten. Der Preis: sie haengen an diesem einen Rechner.
+ */
+var ROSTER = { wallets: {}, geprueft: 0 };
+try {
+  var rroh = localStorage.getItem("sonar_roster");
+  if(rroh) ROSTER = Object.assign(ROSTER, JSON.parse(rroh) || {});
+} catch(e){}
+
+var ROSTER_MAX = 40;
+var ROSTER_NACHPRUEFUNG_STD = 8;
+
+function rosterSave(){
+  try { localStorage.setItem("sonar_roster", JSON.stringify(ROSTER)); } catch(e){}
+}
+
+function rosterListe(){
+  return Object.keys(ROSTER.wallets).map(function(w){
+    return Object.assign({ wallet: w }, ROSTER.wallets[w]);
+  });
+}
+
+/** Wer gerade meldeberechtigt ist: aufgenommen und nicht durchgefallen. */
+function rosterAktiv(){
+  return rosterListe().filter(function(r){ return r.status === "aktiv"; });
+}
+
+/**
+ * Einen geprueften Kandidaten aufnehmen.
+ *
+ * Aufgenommen wird nur, wer die Bilanz besteht. Wer sie NICHT besteht,
+ * wird trotzdem vermerkt - als abgelehnt, mit Grund. Sonst findet die
+ * Suche denselben Bot morgen wieder und prueft ihn noch einmal.
+ */
+function rosterAufnehmen(sc, bilanz){
+  var w = sc.wallet;
+  var vorher = ROSTER.wallets[w];
+  var grund = rosterUrteil(bilanz);
+  var eintrag = vorher || { seit: Date.now(), meldungen: 0, treffer: 0 };
+  eintrag.kind = sc.kind;
+  eintrag.medianSol = sc.medianSol;
+  eintrag.tier = sc.tier;
+  eintrag.bestRank = sc.bestRank;
+  eintrag.bilanz = bilanz || null;
+  eintrag.geprueft = Date.now();
+  eintrag.status = grund.ok ? "aktiv" : "abgelehnt";
+  eintrag.grund = grund.text;
+  ROSTER.wallets[w] = eintrag;
+  rosterAufraeumen();
+  rosterSave();
+  return eintrag;
+}
+
+/** Das Urteil in einem Satz - damit in der App steht, WARUM jemand drin ist. */
+function rosterUrteil(b){
+  if(!b) return { ok: false, text: "noch nicht geprüft" };
+  if(b.muster === "unlesbar") return { ok: false, text: "Maschine mit Unterkonten — nicht prüfbar" };
+  if(!b.genug) return { ok: false, text: "zu wenige abgeschlossene Positionen" };
+  if(b.muster === "dumper") return { ok: false, text: "stößt nach " + Math.round(b.haltMin) + " Min ab — du wärst sein Abnehmer" };
+  if(b.quote < 25) return { ok: false, text: "nur " + b.quote + "% seiner Trades im Plus" };
+  return { ok: true, text: b.quote + "% im Plus, hält " + (b.haltMin < 60 ? Math.round(b.haltMin)+" Min" : Math.round(b.haltMin/60)+" Std") };
+}
+
+/**
+ * Aufraeumen: Abgelehnte nach einer Woche vergessen (Menschen aendern
+ * sich), und den Bestand deckeln - die Schwaechsten fliegen zuerst.
+ */
+function rosterAufraeumen(){
+  var jetzt = Date.now();
+  Object.keys(ROSTER.wallets).forEach(function(w){
+    var r = ROSTER.wallets[w];
+    if(r.status === "abgelehnt" && (jetzt - (r.geprueft||0)) > 7*24*3600*1000) delete ROSTER.wallets[w];
+  });
+  var aktiv = rosterAktiv();
+  if(aktiv.length > ROSTER_MAX){
+    aktiv.sort(function(a,b){ return rosterRang(b) - rosterRang(a); });
+    aktiv.slice(ROSTER_MAX).forEach(function(r){ delete ROSTER.wallets[r.wallet]; });
+  }
+}
+
+/**
+ * Wie gut ist jemand? Die eigene Erfahrung schlaegt die fremde Statistik.
+ *
+ * Seine Bilanz sagt, ob er fuer sich Geld verdient. Was DEINE Meldungen
+ * gebracht haben, sagt, ob es sich lohnt ihm zu folgen. Das kann
+ * auseinanderfallen, und im Zweifel zaehlt das Zweite.
+ */
+function rosterRang(r){
+  var b = r.bilanz || {};
+  var basis = (b.quote || 0) + (b.sechsfach || 0) * 5 + (b.muster === "geduldig" ? 10 : 0);
+  if((r.meldungen || 0) >= 4){
+    var eigen = (r.treffer / r.meldungen) * 100;
+    return eigen * 2 + basis * 0.5;
+  }
+  return basis;
+}
+
+/** Wer laenger nicht geprueft wurde, gehoert nachgerechnet. */
+function rosterFaellig(){
+  var grenze = Date.now() - ROSTER_NACHPRUEFUNG_STD*3600*1000;
+  return rosterListe()
+    .filter(function(r){ return r.status === "aktiv" && (r.geprueft||0) < grenze; })
+    .slice(0, 5)
+    .map(function(r){ return r.wallet; });
+}
+
 var LEARN = { alerts: [], schwelle: 45, stand: "" };
 try {
   var roh = localStorage.getItem("sonar_learn");
@@ -1588,9 +1800,12 @@ function gelernteSchwelle(){
   for(var band = 30; band <= 80; band += 10){
     var drin = fertig.filter(function(a){ return a.relevance >= band; });
     if(drin.length < 6) continue;
-    var treffer = drin.filter(function(a){ return a.ergebnis >= 20; }).length;
+    var treffer = drin.filter(function(a){ return a.ergebnis === "ziel"; }).length;
     var quote = treffer / drin.length;
-    if(quote >= 0.3 && beste === null) beste = band;
+    // Faktor fuenf ist selten. Zehn Prozent Trefferquote reichen hier
+    // aus - bei fuenf Euro Einsatz und fuenfundzwanzig Euro Ertrag
+    // rechnet sich schon jeder fuenfte Treffer.
+    if(quote >= 0.1 && beste === null) beste = band;
   }
   return beste;
 }
@@ -1614,6 +1829,24 @@ function autoSchwelle(){
 }
 
 /** Einen ausgeloesten Alarm zum spaeteren Nachschauen merken. */
+/**
+ * Das Ziel, an dem ab jetzt alles gemessen wird.
+ *
+ * Vorher hat die App "+20% nach 40 Minuten" gezaehlt. Das war eine
+ * Zahl, die sich leicht messen liess - nicht die Zahl, um die es geht.
+ * Dein Ziel heisst: fuenf Euro rein, fuenfundzwanzig raus, moeglichst
+ * innerhalb von ein bis zwei Tagen. Also Faktor fuenf in achtundvierzig
+ * Stunden.
+ *
+ * Der Unterschied ist nicht kosmetisch. Ein Coin, der in zwanzig
+ * Minuten 25% macht und dann stirbt, war nach der alten Rechnung ein
+ * Treffer und nach der neuen ein Fehlschlag - zu Recht, denn mit ihm
+ * haettest du nichts verdient. Die App lernt ab jetzt also etwas
+ * anderes als vorher, und zwar das Richtige.
+ */
+var ZIEL_X = 5;
+var ZIEL_STUNDEN = 48;
+
 function learnRecord(m){
   var preis = m.coin && m.coin.priceUsd;
   LEARN.alerts.push({
@@ -1624,7 +1857,12 @@ function learnRecord(m){
     // haltbarere Erkenntnis. Ein Coin ist morgen vorbei, ein Trader
     // handelt naechste Woche wieder.
     wallet: m.wallet || null,
-    mcap: (m.coin && m.coin.marketCap) || null, ergebnis: null
+    mcap: (m.coin && m.coin.marketCap) || null,
+    // Der hoechste Stand, den der Coin seit der Meldung erreicht hat.
+    // Ein einzelner Blick nach 40 Minuten verpasst genau die Faelle,
+    // auf die es ankommt: der Coin, der nach anderthalb Tagen laeuft.
+    maxX: 1,
+    ergebnis: null
   });
   learnSave();
 }
@@ -1641,7 +1879,7 @@ function learnRecord(m){
 function walletBilanzEigen(wallet){
   var meine = LEARN.alerts.filter(function(a){ return a.wallet === wallet && a.ergebnis != null; });
   if(meine.length < 4) return null;
-  var gut = meine.filter(function(a){ return a.ergebnis >= 20; }).length;
+  var gut = meine.filter(function(a){ return a.ergebnis === "ziel"; }).length;
   return { n: meine.length, quote: Math.round((gut / meine.length) * 100) };
 }
 
@@ -1650,38 +1888,89 @@ function walletBilanzEigen(wallet){
  * Laeuft alle paar Minuten mit, kostet nur eine Jupiter-Abfrage.
  */
 function learnFollowUp(){
-  var reif = LEARN.alerts.filter(function(a){
-    return a.ergebnis == null && a.preis && (Date.now() - a.ts) > 40*60*1000 && (Date.now() - a.ts) < 24*3600*1000;
-  }).slice(0, 25);
-  if(!reif.length){ renderAutoInfo(); return; }
+  var jetztMs = Date.now();
+  // Alles verfolgen, was noch offen ist und juenger als 48 Stunden -
+  // nicht nur einmal nach 40 Minuten hineinschauen. Der Coin, der erst
+  // am zweiten Tag laeuft, ist genau der Fall, den die alte Rechnung
+  // uebersehen hat.
+  var offen = LEARN.alerts.filter(function(a){
+    return a.ergebnis == null && a.preis && (jetztMs - a.ts) < ZIEL_STUNDEN*3600*1000;
+  }).slice(-30);
+  if(!offen.length){ renderAutoInfo(); return; }
 
-  apiFetch("/api/quote?mints=" + encodeURIComponent(reif.map(function(a){ return a.mint; }).join(",")))
+  apiFetch("/api/quote?mints=" + encodeURIComponent(offen.map(function(a){ return a.mint; }).join(",")))
     .then(function(j){
       if(!j.ok) return;
-      var jetzt = {};
-      (j.quotes||[]).forEach(function(q){ jetzt[q.mint] = q.priceUsd; });
-      reif.forEach(function(a){
-        var p = jetzt[a.mint];
-        // Kein Kurs mehr = der Coin ist tot. Das IST das Ergebnis.
-        a.ergebnis = (p && a.preis) ? Math.round(((p - a.preis) / a.preis) * 100) : -100;
+      var kurse = {};
+      (j.quotes||[]).forEach(function(q){ kurse[q.mint] = q.priceUsd; });
+      offen.forEach(function(a){
+        var p = kurse[a.mint];
+        var alter = jetztMs - a.ts;
+        if(p && a.preis){
+          var x = p / a.preis;
+          if(x > (a.maxX || 1)) a.maxX = Math.round(x * 100) / 100;
+        }
+        // Abschliessen, wenn das Ziel erreicht ist ODER die Frist um ist.
+        // Kein Kurs mehr heisst: der Coin ist tot, und das IST das
+        // Ergebnis - nicht "unbekannt".
+        if((a.maxX || 1) >= ZIEL_X) a.ergebnis = "ziel";
+        else if(!p && alter > 2*3600*1000) a.ergebnis = "tot";
+        else if(alter > ZIEL_STUNDEN*3600*1000) a.ergebnis = "verfehlt";
       });
       learnSave();
+      lernUeberWallets();
       renderAutoInfo();
     })
     .catch(function(){});
+}
+
+/**
+ * Und jetzt zurueckschreiben, was das ueber die MENSCHEN sagt.
+ *
+ * Ein Coin ist morgen vorbei. Ein Trader handelt naechste Woche wieder.
+ * Deshalb ist das hier die haltbarere Erkenntnis: nicht welcher Coin
+ * lief, sondern wessen Meldungen sich gelohnt haben.
+ */
+function lernUeberWallets(){
+  var zaehler = {};
+  LEARN.alerts.forEach(function(a){
+    if(!a.wallet || a.ergebnis == null) return;
+    var z = zaehler[a.wallet] || { n: 0, t: 0 };
+    z.n++;
+    if(a.ergebnis === "ziel") z.t++;
+    zaehler[a.wallet] = z;
+  });
+  Object.keys(zaehler).forEach(function(w){
+    if(!ROSTER.wallets[w]) return;
+    ROSTER.wallets[w].meldungen = zaehler[w].n;
+    ROSTER.wallets[w].treffer = zaehler[w].t;
+    // Wer genug Meldungen hatte und dabei nie geliefert hat, fliegt.
+    // Das ist der Teil, der den Bestand ehrlich haelt: er waechst nicht
+    // nur, er sortiert auch aus.
+    if(zaehler[w].n >= 10 && zaehler[w].t === 0){
+      ROSTER.wallets[w].status = "abgelehnt";
+      ROSTER.wallets[w].grund = "10 Meldungen, keine hat " + ZIEL_X + "× erreicht";
+    }
+  });
+  rosterSave();
 }
 
 function renderAutoInfo(){
   var box = el("s-auto-info");
   if(!box) return;
   var fertig = LEARN.alerts.filter(function(a){ return a.ergebnis != null; });
-  var treffer = fertig.filter(function(a){ return a.ergebnis >= 20; }).length;
+  var treffer = fertig.filter(function(a){ return a.ergebnis === "ziel"; }).length;
   var teile = ["meldet ab <b>Relevanz " + (LEARN.schwelle || 45) + "</b>"];
   teile.push(Math.round(alarmRate()*10)/10 + "/Std");
+
+  var aktiv = rosterAktiv().length;
+  var abgelehnt = rosterListe().length - aktiv;
+  teile.push("<b>" + aktiv + "</b> geprüfte Wallets" + (abgelehnt ? " (" + abgelehnt + " aussortiert)" : ""));
+
   if(fertig.length >= 5){
-    teile.push("aus <b>" + fertig.length + "</b> Alarmen gelernt · " + treffer + " liefen +20%");
+    teile.push("<b>" + treffer + "</b> von " + fertig.length + " erreichten " + ZIEL_X + "×");
   } else if(LEARN.alerts.length){
-    teile.push(LEARN.alerts.length + " Alarme gemerkt, Auswertung ab 15");
+    teile.push(LEARN.alerts.length + " Alarme laufen, Auswertung ab 15");
   } else {
     teile.push("noch nichts gelernt");
   }
