@@ -972,9 +972,10 @@ function loadScouts(){
             '<span class="mu2">Das passiert, wenn die letzten Läufer nichts gemeinsam hatten — ein ehrliches Ergebnis, kein Fehler.</span></div>')+
         ((j.winners && j.winners.length)
           ? '<p class="sub" style="margin-top:12px">Untersucht: '+j.winners.map(function(w){
-              return esc(w.symbol||"?") + " " + pctTxt(w.priceChangeH24,0);
+              return esc(w.symbol||"?") + " " + pctTxt(w.priceChangeH24,0) +
+                ' <span class="mu2">(' + w.buyers + ' frühe Käufer)</span>';
             }).join(" · ")+'</p>'
-          : '')+
+          : '<p class="sub" style="margin-top:12px">Es ist gerade kein Coin gelaufen, der die Kriterien erfüllt.</p>')+
         '</div>';
 
       if(j.clusters && j.clusters.length){
