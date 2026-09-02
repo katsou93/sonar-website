@@ -277,6 +277,30 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
 .cl.alarm{border-color:var(--grn);box-shadow:0 0 0 1px rgba(20,241,149,.25)}
 .pulse{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--mu2);font-family:var(--mono)}
 .pulse i{width:6px;height:6px;border-radius:50%;background:var(--grn);display:inline-block;animation:blink 2s infinite}
+/* --- Das Alarmfenster: liegt ueber allem und ist nicht zu uebersehen --- */
+.alerts{position:fixed;top:16px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:10px;
+  max-width:360px;width:calc(100vw - 32px);pointer-events:none}
+.alert{pointer-events:auto;background:var(--panel);border:1px solid var(--grn);border-radius:14px;padding:15px 16px;
+  box-shadow:0 12px 40px rgba(0,0,0,.6), 0 0 0 1px rgba(20,241,149,.18);animation:slidein .25s ease-out}
+.alert.kauf{border-color:rgba(20,241,149,.45)}
+.alert.cluster{border-color:var(--grn);box-shadow:0 12px 40px rgba(0,0,0,.7), 0 0 0 2px rgba(20,241,149,.35)}
+@keyframes slidein{from{transform:translateX(24px);opacity:0}to{transform:none;opacity:1}}
+.alert .ah{display:flex;align-items:flex-start;gap:9px;margin-bottom:3px}
+.alert .at{font-size:11px;font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--grn);flex:1}
+.alert .ax{cursor:pointer;color:var(--mu2);font-size:17px;line-height:1;padding:0 2px}
+.alert .ax:hover{color:var(--red)}
+.alert .asym{font-size:19px;font-weight:700;color:var(--tx);letter-spacing:-.02em;line-height:1.2}
+.alert .aname{font-size:12.5px;color:var(--mu2);margin-top:1px}
+.alert .ainfo{font-size:12.5px;color:var(--mu);margin-top:8px;line-height:1.55}
+.alert .aadr{font-family:var(--mono);font-size:10.5px;color:var(--mu2);margin-top:8px;word-break:break-all;
+  background:rgba(255,255,255,.03);padding:6px 8px;border-radius:6px}
+.alert .abtn{display:flex;gap:6px;flex-wrap:wrap;margin-top:11px}
+.alert .abtn button, .alert .abtn a{flex:1;min-width:96px;text-align:center;padding:8px 10px;border-radius:8px;
+  font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;border:1px solid var(--border2);
+  background:rgba(255,255,255,.04);color:var(--tx);text-decoration:none;transition:.15s}
+.alert .abtn .prim{background:var(--grn);color:#04120c;border-color:var(--grn)}
+.alert .abtn button:hover, .alert .abtn a:hover{filter:brightness(1.15)}
+@media(max-width:520px){.alerts{top:auto;bottom:12px;right:12px;left:12px;max-width:none}}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
 @media(max-width:640px){.scout{grid-template-columns:auto 1fr}}
 @media(max-width:640px){.move,.cl{grid-template-columns:1fr;gap:6px}.move .amt,.move .sub{text-align:left}}
@@ -441,6 +465,7 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
       <label class="autolabel">max <input class="numin wide" id="s-mcap" type="number" min="0" step="5000" value="0"> $ MCap</label>
       <label class="autolabel"><input type="checkbox" id="s-buys" checked> nur Käufe</label>
       <label class="autolabel"><input type="checkbox" id="s-notify"> Benachrichtigung</label>
+      <label class="autolabel"><input type="checkbox" id="s-big" checked> nur ab 0,5 SOL</label>
       <label class="autolabel"><input type="checkbox" id="s-auto"> alle 15 s</label>
       <button class="btn btn-g btn-sm" id="s-test">Test</button>
       <button class="btn btn-g btn-sm" id="s-reload">Jetzt prüfen</button>
@@ -491,6 +516,8 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
       <p style="margin-top:16px"><b>Was der Score nicht kann.</b> Er misst, wie wahrscheinlich du strukturell verlierst — kein Ausstieg, Dev dumpt, Wash-Volumen. Er sagt nicht voraus, ob ein Coin steigt. 90 Punkte und trotzdem auf null ist völlig normal.</p>
     </div>
   </section>
+
+  <div id="alerts" class="alerts"></div>
 
   <p class="disc">Keine Anlageberatung. Alle Daten kommen von Jupiter, DexScreener, Rugcheck und einem öffentlichen Solana-RPC und können falsch, veraltet oder unvollständig sein — jedes Ergebnis ist ein Hinweis, keine Zusicherung. Der Handel mit Memecoins führt bei der Mehrheit der Teilnehmer zu Verlusten.</p>
 </main>
@@ -1044,6 +1071,11 @@ function loadScouts(){
 
       // Adressen merken, damit der Puls auch ohne eigene Wallets laeuft.
       sScoutAddrs = (j.scouts || []).slice(0, 4).map(function(x){ return x.wallet; });
+      // Der Fehler, der die Meldungen still gemacht hat: hier lief nur der
+      // Zusammenlauf-Alarm. Wer keine eigenen Wallets eingetragen hat -
+      // also der Normalfall - bekam Einzelkaeufe nie gemeldet, und die
+      // strenge Zusammenlauf-Regel trifft fast nie. Ergebnis: Stille.
+      sNotify((j.moves || []).filter(function(m){ return m.side === "kauf"; }));
       clusterAlarm(j.clusters);
 
       out.querySelectorAll("[data-addr]").forEach(function(node){
@@ -1131,6 +1163,108 @@ function notifyWanted(){
   return !!((a && a.checked) || (b && b.checked));
 }
 
+/* ---------- Das Alarmfenster ---------- */
+
+/**
+ * Warum ein eigenes Fenster in der Seite und nicht nur die
+ * Browser-Benachrichtigung:
+ *
+ * Die Benachrichtigung des Betriebssystems ist die unzuverlaessigste
+ * Stelle der ganzen Kette. Windows-Fokusassistent, macOS-Mitteilungen,
+ * Chrome-Einstellungen - drei Stellen, an denen sie stillschweigend
+ * verschluckt wird, ohne dass die Seite davon etwas merkt. Genau das ist
+ * hier passiert: Berechtigung "granted", Haken gesetzt, trotzdem nichts.
+ *
+ * Dieses Fenster liegt IN der Seite. Es kann von keiner Systemeinstellung
+ * unterdrueckt werden, es bleibt stehen bis man es wegklickt, und es hat
+ * die drei Knoepfe, die man in dem Moment wirklich braucht: Adresse
+ * kopieren, pump.fun aufmachen, im Scanner pruefen.
+ *
+ * Der Ton dazu ist der eigentliche Trick - er holt einen zurueck, ohne
+ * dass man hinschauen muss.
+ */
+var audioCtx = null;
+
+function alertSound(stark){
+  try {
+    if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if(audioCtx.state === "suspended") audioCtx.resume();
+    // Zwei kurze Toene, beim starken Alarm hoeher und dreimal.
+    var noten = stark ? [880, 1180, 1480] : [660, 880];
+    noten.forEach(function(hz, i){
+      var osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = hz;
+      var t = audioCtx.currentTime + i * 0.14;
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.18, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.13);
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.start(t); osc.stop(t + 0.15);
+    });
+  } catch(e){}
+}
+
+function copyText(text, btn){
+  var ok = function(){ if(btn){ var alt = btn.textContent; btn.textContent = "kopiert ✓"; setTimeout(function(){ btn.textContent = alt; }, 1400); } };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(ok).catch(function(){ fallbackCopy(text); ok(); });
+  } else { fallbackCopy(text); ok(); }
+}
+function fallbackCopy(text){
+  try {
+    var ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select(); document.execCommand("copy");
+    document.body.removeChild(ta);
+  } catch(e){}
+}
+
+/**
+ * Ein Alarmfenster aufmachen.
+ * o = { kind, titel, symbol, name, mint, info }
+ */
+function popAlert(o){
+  var box = el("alerts");
+  if(!box) return;
+  // Nie mehr als vier auf einmal - sonst deckt der Stapel den Bildschirm zu.
+  while(box.children.length >= 4) box.removeChild(box.firstChild);
+
+  var card = document.createElement("div");
+  card.className = "alert " + (o.kind || "kauf");
+  card.innerHTML =
+    '<div class="ah"><div class="at">'+esc(o.titel||"")+'</div><div class="ax">×</div></div>'+
+    '<div class="asym">'+esc(o.symbol||"?")+'</div>'+
+    (o.name ? '<div class="aname">'+esc(o.name)+'</div>' : '')+
+    (o.info ? '<div class="ainfo">'+o.info+'</div>' : '')+
+    '<div class="aadr">'+esc(o.mint||"")+'</div>'+
+    '<div class="abtn">'+
+      '<button class="prim" data-copy>Adresse kopieren</button>'+
+      '<a href="https://pump.fun/coin/'+esc(o.mint||"")+'" target="_blank" rel="noopener">pump.fun</a>'+
+      '<button data-scan>Prüfen</button>'+
+    '</div>';
+
+  card.querySelector(".ax").addEventListener("click", function(){ card.remove(); });
+  card.querySelector("[data-copy]").addEventListener("click", function(){ copyText(o.mint, this); });
+  card.querySelector("[data-scan]").addEventListener("click", function(){
+    document.querySelector('.tab[data-view="scanner"]').click();
+    window.scrollTo(0,0);
+    scan(o.mint);
+    card.remove();
+  });
+
+  box.appendChild(card);
+  alertSound(o.kind === "cluster");
+
+  // Zusaetzlich die System-Benachrichtigung - wenn sie durchkommt, gut.
+  // Wenn nicht, hast du das Fenster oben trotzdem.
+  try {
+    if("Notification" in window && Notification.permission === "granted"){
+      new Notification("SONAR · " + (o.symbol||"?"), { body: o.plain || o.titel || "", tag: "sonar-" + o.mint, requireInteraction: true });
+    }
+  } catch(e){}
+}
+
 /**
  * Die Alarmregel: ab wie vielen Wallets im selben Coin, und bis zu
  * welchem Marktwert?
@@ -1160,21 +1294,24 @@ function matchesAlarm(c, rule){
 /** Zusammenlauf-Alarm - der eigentliche Grund fuer das ganze System. */
 function clusterAlarm(clusters){
   if(!notifyWanted()) return;
-  if(!("Notification" in window) || Notification.permission !== "granted") return;
   var rule = alarmRule();
   (clusters||[]).filter(function(c){ return matchesAlarm(c, rule); }).forEach(function(c){
     var key = "cl-" + c.mint + "-" + (c.lastAt || 0);
     if(sKnown[key]) return;
     sKnown[key] = Date.now();
-    try {
-      new Notification("SONAR 🚨 " + c.wallets + " Wallets: " + (c.symbol || "?"), {
-        body: c.buys + " Käufe · " + c.solTotal + " SOL zusammen" +
-              (c.coin && c.coin.marketCap ? " · MCap " + money(c.coin.marketCap) : "") +
-              (c.score != null ? " · unser Score " + c.score : ""),
-        tag: key,
-        requireInteraction: true
-      });
-    } catch(e){}
+    var coin = c.coin || {};
+    popAlert({
+      kind: "cluster",
+      titel: "🚨 " + c.wallets + " Wallets im selben Coin",
+      symbol: c.symbol || "?",
+      name: coin.name || "",
+      mint: c.mint,
+      plain: c.buys + " Käufe, " + c.solTotal + " SOL zusammen",
+      info: "<b>" + c.buys + " Käufe · " + c.solTotal + " SOL zusammen</b>" +
+            (coin.marketCap ? " · MCap " + money(coin.marketCap) : "") +
+            (c.score != null ? "<br>Unser Score <b>" + c.score + "</b>" : "") +
+            (coin.organicShareH1 != null ? " · " + Math.round(coin.organicShareH1*100) + "% echtes Volumen" : "")
+    });
   });
   try { localStorage.setItem("sonar_moves_seen", JSON.stringify(sKnown)); } catch(e){}
 }
@@ -1219,16 +1356,30 @@ function sPulse(){
 /** Jede Transaktion nur einmal melden - Signaturen sind eindeutig. */
 function sNotify(moves){
   if(!notifyWanted()) return;
-  if(!("Notification" in window) || Notification.permission !== "granted") return;
-  moves.filter(function(m){ return !sKnown[m.signature]; }).slice(0,3).forEach(function(m){
+  var nurGross = el("s-big") && el("s-big").checked;
+  moves.filter(function(m){
+    if(sKnown[m.signature]) return false;
+    // Ohne diesen Filter meldet jeder Streuer im Minutentakt. Mit ihm
+    // kommt nur, wer wirklich Geld einsetzt.
+    if(nurGross && (m.solAmount || 0) < 0.5) return false;
+    return true;
+  }).slice(0,3).forEach(function(m){
     sKnown[m.signature] = Date.now();
-    try {
-      new Notification("SONAR · " + nameOf(m.wallet) + " hat gekauft", {
-        body: (m.symbol||"?") + (m.solAmount ? " für " + m.solAmount + " SOL" : "") +
-              (m.score != null ? " · unser Score " + m.score : ""),
-        tag: "sonar-move-" + m.signature
-      });
-    } catch(e){}
+    var c = m.coin || {};
+    popAlert({
+      kind: "kauf",
+      titel: "👁 " + nameOf(m.wallet) + " hat gekauft",
+      symbol: m.symbol || "?",
+      name: c.name || "",
+      mint: m.mint,
+      plain: (m.solAmount ? m.solAmount + " SOL" : "") + (m.score != null ? " · Score " + m.score : ""),
+      info: (m.solAmount ? "<b>" + m.solAmount + " SOL</b> eingesetzt" : "Einsatz unbekannt") +
+            (m.score != null ? " · Unser Score <b>" + m.score + "</b>" : "") +
+            (c.marketCap ? "<br>MCap " + money(c.marketCap) : "") +
+            (c.organicShareH1 != null ? " · " + Math.round(c.organicShareH1*100) + "% echtes Volumen" : "") +
+            (c.ageMinutes != null ? " · " + age(c.ageMinutes) + " alt" : "") +
+            ((m.topFlags||[]).length ? '<br><span style="color:var(--yel)">⚠ ' + esc(m.topFlags.map(function(f){return f.title;}).slice(0,2).join(" · ")) + '</span>' : "")
+    });
   });
   var grenze = Date.now() - 86400000, sauber = {};
   Object.keys(sKnown).forEach(function(k){ if(sKnown[k] > grenze) sauber[k] = sKnown[k]; });
@@ -1269,21 +1420,27 @@ el("s-auto").addEventListener("change", function(){
 });
 
 el("s-test").addEventListener("click", function(){
-  if(!("Notification" in window)){ alert("Dieser Browser kann keine Benachrichtigungen."); return; }
-  if(Notification.permission !== "granted"){
-    Notification.requestPermission().then(function(p){
-      if(p === "granted") new Notification("SONAR · Test", { body: "Läuft. Ab jetzt bekommst du Bescheid." });
-      else alert("Chrome hat Benachrichtigungen für diese Seite blockiert. Auf das Schloss-Symbol links in der Adresszeile klicken und erlauben.");
-    });
-    return;
-  }
-  var rule = alarmRule();
-  new Notification("SONAR 🚨 " + rule.minWallets + " Wallets: TESTCOIN", {
-    body: "So sieht der Alarm aus. Regel gerade: ab " + rule.minWallets + " Wallets" +
-          (rule.maxMcap ? ", nur unter " + money(rule.maxMcap) + " Marktwert" : ", ohne Marktwert-Grenze") + ".",
-    requireInteraction: true
-  });
+  // Das Fenster kommt IMMER - unabhaengig davon, ob das Betriebssystem
+  // die Systembenachrichtigung durchlaesst. Die wird nur zusaetzlich
+  // versucht.
+  if("Notification" in window && Notification.permission === "default") Notification.requestPermission();
+  zeigeTest();
 });
+
+function zeigeTest(){
+  var rule = alarmRule();
+  popAlert({
+    kind: "cluster",
+    titel: "🚨 " + rule.minWallets + " Wallets im selben Coin",
+    symbol: "TESTCOIN",
+    name: "So sieht der Alarm aus",
+    mint: "TestMint1111111111111111111111111111111111",
+    plain: "Testalarm",
+    info: "Deine Regel: ab <b>" + rule.minWallets + " Wallets</b>" +
+          (rule.maxMcap ? ", nur unter <b>" + money(rule.maxMcap) + "</b> Marktwert" : ", ohne Marktwert-Grenze") +
+          ".<br>Die Knöpfe unten funktionieren — probier <b>Adresse kopieren</b>."
+  });
+}
 ["s-min","s-mcap"].forEach(function(id){
   el(id).addEventListener("change", function(){
     try { localStorage.setItem("sonar_opt_" + id, el(id).value); } catch(e){}
@@ -1575,7 +1732,7 @@ el("w-auto").addEventListener("change", function(){
  * Wache. Die Haken werden deshalb gespeichert und beim Start wieder
  * gesetzt - inklusive der Timer, die daran haengen.
  */
-["w-notify", "s-notify", "w-auto", "s-auto", "s-buys", "j-auto"].forEach(function(id){
+["w-notify", "s-notify", "w-auto", "s-auto", "s-buys", "s-big", "j-auto"].forEach(function(id){
   var box = el(id);
   if(!box) return;
   var key = "sonar_opt_" + id;
