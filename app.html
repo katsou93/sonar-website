@@ -1815,6 +1815,12 @@ function kohorteVerfolgen(){
           var x = p / c.preis;
           if(x > (c.maxX||1)) c.maxX = Math.round(x*100)/100;
         }
+        // Der hoechste erreichte Marktwert. Das ist die Zahl, die
+        // Adams Beobachtung messbar macht: Coins laufen auf 70k, 100k,
+        // 400k und fallen zurueck. Wenn das stimmt, ist der Gipfel
+        // ungefaehr vorgegeben - und dann haengt DEIN Vielfaches nur
+        // noch davon ab, wo du eingestiegen bist.
+        if(c.mcap) c.peak = Math.round(c.mcap * (c.maxX||1));
         if((c.maxX||1) >= ZIEL_X) c.ergebnis = "ziel";
         else if(!p && alter > 2*3600*1000) c.ergebnis = "tot";
         else if(alter > ZIEL_STUNDEN*3600*1000) c.ergebnis = "verfehlt";
@@ -1873,6 +1879,63 @@ function kohorteTabelle(titel, feld, grenzen, format){
     }).join("")+'</div>';
 }
 
+/**
+ * Wie hoch kommen Coins überhaupt?
+ *
+ * Adams Beobachtung: viele laufen auf 70k, 100k, 200k, manche 400k —
+ * und fallen dann zurück. Wenn das stimmt, ist der Gipfel grob
+ * vorgegeben, und dein Vielfaches ist reine Arithmetik:
+ *
+ *     Einstieg  8k, Gipfel 100k  =  12×
+ *     Einstieg 30k, Gipfel 100k  =   3×
+ *     Einstieg 60k, Gipfel 100k  =   1,7×
+ *
+ * Dann ist die Frage nicht mehr "welcher Coin geht ab", sondern "wo
+ * steige ich ein, damit der übliche Gipfel für mein Ziel reicht". Das
+ * ist eine viel leichtere Frage — und diese Tabelle beantwortet sie
+ * mit gemessenen Zahlen statt mit Gefühl.
+ */
+function gipfelTabelle(){
+  var fertig = KOHORTE.coins.filter(function(c){ return c.ergebnis != null && c.peak && c.mcap; });
+  if(fertig.length < 20) return "";
+
+  var grenzen = [10000, 30000, 100000, Infinity];
+  var zeilen = [];
+  for(var i = 0; i < grenzen.length; i++){
+    var von = i === 0 ? -Infinity : grenzen[i-1];
+    var bis = grenzen[i];
+    var drin = fertig.filter(function(c){ return c.mcap > von && c.mcap <= bis; });
+    if(drin.length < KOH_MIN_BAND) continue;
+    var peaks = drin.map(function(c){ return c.peak; }).sort(function(a,b){ return a-b; });
+    var med = peaks[Math.floor(peaks.length/2)];
+    var xs = drin.map(function(c){ return c.maxX||1; }).sort(function(a,b){ return a-b; });
+    var medX = xs[Math.floor(xs.length/2)];
+    var top = peaks[Math.floor(peaks.length*0.9)];
+    zeilen.push({
+      label: bis === Infinity ? "über 100k" : (von === -Infinity ? "unter " : "bis ") + money(bis),
+      n: drin.length, med: med, medX: Math.round(medX*10)/10, top: top
+    });
+  }
+  if(!zeilen.length) return "";
+
+  return '<div class="kohtab"><h4>Wie hoch kommen sie? — dein Vielfaches ist Einstieg gegen Gipfel</h4>'+
+    '<div class="kohzeile" style="color:var(--mu2)">'+
+      '<span class="kl">Einstieg bei</span><span class="kb" style="background:none"></span>'+
+      '<span class="kq">Gipfel</span><span class="kn">typisch</span></div>'+
+    zeilen.map(function(z){
+      var reicht = z.medX >= ZIEL_X;
+      return '<div class="kohzeile'+(reicht?" beste":"")+'">'+
+        '<span class="kl">'+esc(z.label)+'</span>'+
+        '<span class="kb"><i style="width:'+Math.min(100, z.medX*12)+'%"></i></span>'+
+        '<span class="kq">'+money(z.med)+'</span>'+
+        '<span class="kn">'+z.medX+'×</span>'+
+      '</div>';
+    }).join("")+
+    '<p class="sub" style="margin-top:8px">Gelesen wird das so: <b>der übliche Gipfel ist etwa gleich, '+
+    'egal wo du einsteigst.</b> Deshalb entscheidet dein Einstieg über dein Vielfaches — nicht der Coin. '+
+    'Grün heißt: aus diesem Band heraus reicht der typische Gipfel für '+ZIEL_X+'×.</p></div>';
+}
+
 function renderKohorte(){
   var box = el("koh-out");
   if(!box) return;
@@ -1922,6 +1985,8 @@ function renderKohorte(){
   html += kohorteTabelle("Unsere Vorprüfung", "score",
     [35, 50, 70, 101],
     function(v,b){ return b > 100 ? "über 70" : (v === -Infinity ? "unter " : "bis ") + b; });
+
+  html += gipfelTabelle();
 
   html += '<p class="sub" style="margin-top:14px">Grün markiert ist jeweils das stärkste Band. '+
     'Bänder mit weniger als '+KOH_MIN_BAND+' Fällen werden weggelassen — aus drei Fällen eine Prozentzahl zu machen '+
