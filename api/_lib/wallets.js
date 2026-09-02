@@ -373,7 +373,14 @@ const { isNoise } = require("./feed");
 async function winners(limit) {
   const max = limit || 10;
   return cached("scout:winners", 60 * 60 * 1000, async () => {
-    const lists = await Promise.allSettled([jup.topOrganic("24h"), jup.topTraded("24h"), jup.topOrganic("6h")]);
+    // Mehr Fenster = mehr Kandidaten. Und darauf kommt alles an: bei
+    // vier untersuchten Coins ueberschneidet sich fast nie etwas, bei
+    // zehn schon deutlich oefter (die Zahl der moeglichen Paare
+    // waechst quadratisch, nicht linear).
+    const lists = await Promise.allSettled([
+      jup.topOrganic("24h"), jup.topTraded("24h"), jup.topOrganic("6h"),
+      jup.topTraded("6h"), jup.topOrganic("1h"),
+    ]);
     const seen = new Set();
     const out = [];
     for (const res of lists) {
@@ -397,8 +404,12 @@ async function winners(limit) {
         // aus einem einzigen Coin bekommen - der Schwellenwert von zwei
         // waere damit wertlos geworden.
         if (coin.ageMinutes == null || coin.ageMinutes < 120 || coin.ageMinutes > 10080) continue;
-        if ((coin.liquidityUsd || 0) < 20000) continue;
-        if ((coin.priceChangeH24 || 0) < 25) continue;
+        // Zweiter Live-Lauf: mit 20k Liquiditaet und +25% blieben WIEDER
+        // nur zwei Coins uebrig. Die Grenzen sind hier nur dazu da,
+        // offensichtlichen Muell fernzuhalten - die eigentliche Pruefung
+        // passiert weiter unten an den Kaeufern.
+        if ((coin.liquidityUsd || 0) < 12000) continue;
+        if ((coin.priceChangeH24 || 0) < 20) continue;
         out.push(coin);
       }
     }
@@ -497,7 +508,9 @@ function kindOf(medianSol) {
 async function establishedRunners(limit) {
   const max = limit || 3;
   return cached("scout:established", 60 * 60 * 1000, async () => {
-    const lists = await Promise.allSettled([jup.topOrganic("24h"), jup.topTraded("24h")]);
+    const lists = await Promise.allSettled([
+      jup.topOrganic("24h"), jup.topTraded("24h"), jup.topOrganic("6h"),
+    ]);
     const seen = new Set();
     const out = [];
     for (const res of lists) {
@@ -510,9 +523,9 @@ async function establishedRunners(limit) {
         // Mindestens eine Woche alt, richtig gross, und in 24 Stunden
         // deutlich gelaufen.
         if (coin.ageMinutes == null || coin.ageMinutes < 10080) continue;
-        if ((coin.marketCap || 0) < 1000000) continue;
-        if ((coin.liquidityUsd || 0) < 100000) continue;
-        if ((coin.priceChangeH24 || 0) < 25) continue;
+        if ((coin.marketCap || 0) < 500000) continue;
+        if ((coin.liquidityUsd || 0) < 60000) continue;
+        if ((coin.priceChangeH24 || 0) < 20) continue;
         out.push(coin);
       }
     }
@@ -566,6 +579,32 @@ const SCOUT_MIN_HITS = 2;
  * Die Kundschafter finden. Ein Aufruf pro untersuchtem Gewinner-Coin,
  * sequenziell wegen des Zwei-pro-Sekunde-Limits, zwoelf Stunden gecacht.
  */
+const EINMAL_RANG = 15;
+const EINMAL_SOL = 0.3;
+const EINMAL_LAUF = 100;
+
+/**
+ * Reicht EIN Treffer? Meistens nein - aber manchmal doch.
+ *
+ * Bedingungen, alle gleichzeitig: es war ein frischer Launch (nur da
+ * heisst ein niedriger Rang wirklich "frueh"), er war unter den ersten
+ * fuenfzehn Kaeufern, er hat echtes Geld gesetzt statt einen
+ * Centbetrag, und der Coin ist danach wirklich gelaufen. Wer das alles
+ * erfuellt, hat nicht einfach nur Glueck gehabt.
+ */
+function qualifiesAlone(hit) {
+  if (!hit || !hit.coins || hit.coins.length !== 1) return false;
+  const c = hit.coins[0];
+  // Bei einem etablierten Coin heisst "Rang 3" nur "der dritte im
+  // untersuchten Zeitfenster" - eine beliebige Zahl, kein frueher
+  // Einstieg.
+  if (c.stage !== "launch") return false;
+  if (c.rank > EINMAL_RANG) return false;
+  if ((c.sol || 0) < EINMAL_SOL) return false;
+  if ((c.priceChangeH24 || 0) < EINMAL_LAUF) return false;
+  return true;
+}
+
 async function findScouts(opts) {
   const options = opts || {};
   if (!hasKey()) return { keyMissing: true, scouts: [], winners: [] };
@@ -630,8 +669,23 @@ async function findScouts(opts) {
   }
 
   const total = checked.length;
+
+  // Zwei Wege, als Kundschafter zu gelten - und der zweite ist der
+  // Grund, warum ueberhaupt etwas herauskommt.
+  //
+  // Live gemessen: vier untersuchte Coins, 95 gefundene Kaeufer, null
+  // Wallets in zwei davon. Die Ueberschneidung zu verlangen ist eine
+  // Wette auf einen Zufall, der meistens ausbleibt - und dann steht da
+  // "keine Ergebnisse", obwohl 95 Leute untersucht wurden.
+  //
+  //   MEHRFACH - in zwei oder mehr der untersuchten Coins frueh dabei.
+  //              Das bleibt das starke Signal, und es hat Vorrang.
+  //   EINMAL   - nur ein Coin, aber unter den ersten fuenfzehn Kaeufern,
+  //              mit echtem Geld (kein Centbetrag), und der Coin ist
+  //              danach wirklich gelaufen. Schwaecher, aber nicht
+  //              wertlos - und es steht dran, dass es schwaecher ist.
   const scouts = Array.from(hits.values())
-    .filter((h) => h.coins.length >= SCOUT_MIN_HITS)
+    .filter((h) => h.coins.length >= SCOUT_MIN_HITS || qualifiesAlone(h))
     // Wer in fast allen untersuchten Coins drin war, kauft alles. Das ist
     // ein Bot, kein Kundschafter - und sein Treffer sagt nichts aus.
     .filter((h) => total < 4 || h.coins.length <= Math.ceil(total * 0.75))
@@ -644,6 +698,9 @@ async function findScouts(opts) {
         medianSol: Math.round(median * 1000) / 1000,
         totalSol: Math.round(h.sols.reduce((x, y) => x + y, 0) * 100) / 100,
         kind: kindOf(median),
+        // Woher der Treffer kommt - der Unterschied gehoert dem
+        // Benutzer gesagt, nicht in einer Rangliste versteckt.
+        tier: h.coins.length >= SCOUT_MIN_HITS ? "mehrfach" : "einmal",
         // Wer in etablierten Coins vor dem Anstieg drin war, spielt ein
         // anderes Spiel als ein Launch-Sniper. Beides ist gueltig - man
         // darf es nur nicht verwechseln.
@@ -656,7 +713,14 @@ async function findScouts(opts) {
     .sort((a, b) => b.hits - a.hits || b.medianSol - a.medianSol || a.bestRank - b.bestRank)
     .slice(0, options.max || 8);
 
-  return { keyMissing: false, scouts: scouts, winners: checked };
+  // Die Einmal-Treffer duerfen die Mehrfach-Treffer nie verdraengen:
+  // sie sind Auffuellung, kein Ersatz.
+  const mehrfach = scouts.filter((x) => x.tier === "mehrfach");
+  const platz = Math.max(0, (options.max || 8) - mehrfach.length);
+  const einmal = scouts.filter((x) => x.tier === "einmal").slice(0, platz);
+  const gereiht = mehrfach.concat(einmal);
+
+  return { keyMissing: false, scouts: gereiht, winners: checked };
 }
 
 /**
@@ -703,6 +767,7 @@ module.exports.POSITION_SOL = POSITION_SOL;
 module.exports.findScouts = findScouts;
 module.exports.autoScout = autoScout;
 module.exports.SCOUT_MIN_HITS = SCOUT_MIN_HITS;
+module.exports.qualifiesAlone = qualifiesAlone;
 
 /* ------------------------------------------------------------------ *
  * Der Puls: alle 15 Sekunden schauen, ohne das Guthaben zu verbrennen
