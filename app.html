@@ -274,6 +274,8 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
 .plan b{color:var(--grn)}
 .scout.streuer{opacity:.62}
 .scout.schwach{opacity:.82}
+.scout.durchgefallen{opacity:.45;border-color:rgba(255,90,90,.3)}
+.scout.durchgefallen .adr::after{content:" · durchgefallen";color:var(--red);font-size:10px;letter-spacing:.06em}
 .scout.position{border-color:rgba(20,241,149,.32);background:rgba(20,241,149,.04)}
 .numin{width:48px;padding:4px 7px;border-radius:7px;border:1px solid var(--border);background:rgba(255,255,255,.03);
   color:var(--tx);font-family:var(--mono);font-size:12px;outline:none;text-align:center}
@@ -1029,6 +1031,8 @@ function geprueft(j){
  * meisten davon verlieren bei fast allem anderen. Hier steht deshalb,
  * was die Wallet mit ihren ABGESCHLOSSENEN Positionen gemacht hat.
  */
+var BILANZ = {};
+
 function bilanzTxt(b){
   if(!b) return '<span class="mu2">Bilanz noch nicht geprüft</span>';
   if(!b.genug){
@@ -1060,9 +1064,44 @@ function scoutRow(sc){
       '<div class="det">Einsatz beim Einstieg: <b>'+(sc.medianSol||0)+' SOL</b> im Mittel'+
         (sc.onEstablished ? ' · <b style="color:var(--grn)">'+sc.onEstablished+'× in etablierten Coins</b>' : '')+
       '</div>'+
-      '<div class="det">'+bilanzTxt(sc.bilanz)+'</div></div>'+
+      '<div class="det bil" data-bil="'+esc(sc.wallet)+'">'+bilanzTxt(BILANZ[sc.wallet])+'</div></div>'+
     '<button class="btn '+(kind==="position"?"btn-p":"btn-g")+' btn-sm" data-follow="'+esc(sc.wallet)+'">verfolgen</button>'+
   '</div>';
+}
+
+/**
+ * Die Bilanzen nachladen und einsetzen.
+ *
+ * Wer nachweislich verliert, verschwindet danach aus der Liste - egal
+ * wie frueh er einmal dabei war. Wer zu wenige abgeschlossene
+ * Positionen hat, bleibt stehen, aber mit dem Vermerk: ihn
+ * rauszuwerfen waere genauso gelogen wie ihn zu empfehlen.
+ */
+function ladeBilanzen(wallets){
+  if(!wallets || !wallets.length) return;
+  var offen = wallets.filter(function(w){ return !BILANZ[w]; });
+  if(!offen.length) return;
+  apiFetch("/api/ledger?addrs=" + encodeURIComponent(offen.join(",")))
+    .then(function(j){
+      if(!j || !j.ledgers) return;
+      Object.keys(j.ledgers).forEach(function(w){ BILANZ[w] = j.ledgers[w]; });
+      document.querySelectorAll("[data-bil]").forEach(function(node){
+        var w = node.getAttribute("data-bil");
+        var b = BILANZ[w];
+        if(!b) return;
+        node.innerHTML = bilanzTxt(b);
+        if(istVerlierer(b)){
+          var karte = node.closest(".scout");
+          if(karte){ karte.classList.add("durchgefallen"); }
+        }
+      });
+    })
+    .catch(function(){});
+}
+
+/** Nachweislich im Minus - nicht "noch nicht bewiesen". Der Unterschied zaehlt. */
+function istVerlierer(b){
+  return !!(b && b.genug && b.quote < 25);
 }
 
 /** Die Selbstsuche: Kundschafter finden und zeigen, was sie kaufen. */
@@ -1134,6 +1173,11 @@ function loadScouts(){
       // Zusammenlauf-Alarm. Wer keine eigenen Wallets eingetragen hat -
       // also der Normalfall - bekam Einzelkaeufe nie gemeldet, und die
       // strenge Zusammenlauf-Regel trifft fast nie. Ergebnis: Stille.
+      // Erst die Liste zeigen, dann die Bilanzen nachreichen. Sie
+      // brauchen drei Abfragen pro Wallet - darauf zu warten hiesse,
+      // zwanzig Sekunden auf einen leeren Bildschirm zu schauen.
+      ladeBilanzen((j.scouts||[]).slice(0,5).map(function(x){ return x.wallet; }));
+
       sNotify((j.moves || []).filter(function(m){ return m.side === "kauf"; }));
       clusterAlarm(j.clusters);
 
@@ -1599,6 +1643,9 @@ function sNotify(moves){
   var f = relevanzFilter();
   moves.filter(function(m){
     if(sKnown[m.signature]) return false;
+    // Von einer Wallet, die nachweislich verliert, will man keinen
+    // Alarm - auch dann nicht, wenn dieser eine Kauf gut aussieht.
+    if(istVerlierer(BILANZ[m.wallet])) return false;
     return istRelevant(m, f);
   }).slice(0,3).forEach(function(m){
     sKnown[m.signature] = Date.now();
