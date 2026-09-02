@@ -1069,10 +1069,58 @@ async function main() {
     });
   });
 
-  await check("eine Wallet mit nur einem Treffer ist kein Kundschafter", () => {
+  await check("zwei Treffer bleiben das starke Signal", () => {
     // Genau die Stelle, an der so ein System sonst luegt: an jedem Tag
     // sind tausende Wallets zufaellig einmal frueh dabei.
     assert.strictEqual(wl.SCOUT_MIN_HITS, 2);
+  });
+
+  console.log("\nEin einzelner Treffer: wann zaehlt er trotzdem?");
+  const einTreffer = (over) => ({ coins: [Object.assign(
+    { stage: "launch", rank: 4, sol: 1.2, priceChangeH24: 800 }, over || {}) ] });
+
+  await check("frueh, mit echtem Geld, in einem Coin der gelaufen ist - das zaehlt", () => {
+    // Live gemessen: vier untersuchte Coins, 95 gefundene Kaeufer, keine
+    // einzige Wallet in zweien davon. Zwei Treffer zu verlangen ist eine
+    // Wette auf einen Zufall, der meistens ausbleibt - und dann steht da
+    // "keine Ergebnisse", obwohl 95 Leute untersucht wurden.
+    assert.strictEqual(wl.qualifiesAlone(einTreffer()), true);
+  });
+
+  await check("ein Centbetrag zaehlt auch bei Rang 1 nicht", () => {
+    // Der Sniper, der hundert Launches mit 0,003 SOL beschiesst, ist
+    // per Definition immer frueh dabei. Das ist keine Leistung.
+    assert.strictEqual(wl.qualifiesAlone(einTreffer({ sol: 0.02, rank: 1 })), false);
+  });
+
+  await check("spaet eingestiegen zaehlt nicht", () => {
+    assert.strictEqual(wl.qualifiesAlone(einTreffer({ rank: 40 })), false);
+  });
+
+  await check("frueh in einem Coin, der nicht gelaufen ist, zaehlt nicht", () => {
+    // Frueh dabei zu sein ist nur dann etwas wert, wenn danach etwas
+    // passiert ist. Sonst ist es nur frueh.
+    assert.strictEqual(wl.qualifiesAlone(einTreffer({ priceChangeH24: 30 })), false);
+  });
+
+  await check("bei einem etablierten Coin sagt der Rang gar nichts", () => {
+    // Dort ist "Rang 3" nur der dritte im untersuchten Zeitfenster -
+    // eine beliebige Zahl, kein frueher Einstieg.
+    assert.strictEqual(wl.qualifiesAlone(einTreffer({ stage: "etabliert" })), false);
+  });
+
+  await check("wer zwei Treffer hat, laeuft nicht ueber diese Ausnahme", () => {
+    const zwei = { coins: [
+      { stage: "launch", rank: 2, sol: 2, priceChangeH24: 900 },
+      { stage: "launch", rank: 5, sol: 2, priceChangeH24: 400 },
+    ] };
+    assert.strictEqual(wl.qualifiesAlone(zwei), false);
+  });
+
+  await check("qualifiesAlone wirft nie, egal was reinkommt", () => {
+    [null, undefined, {}, { coins: [] }, { coins: [{}] }].forEach((x) => {
+      assert.strictEqual(wl.qualifiesAlone(x), false);
+    });
   });
 
   await check("der Selbstsuche-Modus haengt nicht an einer Wortliste", () => {
