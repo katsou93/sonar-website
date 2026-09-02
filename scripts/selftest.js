@@ -1101,6 +1101,26 @@ async function main() {
     assert.strictEqual(wl.qualifiesAlone(einTreffer({ rank: 30 })), true);
   });
 
+  await check("der Zusammenlauf zaehlt Menschen, nicht Adressen", () => {
+    // Der alte Zusammenlauf verlangte drei Wallets AUS DER EIGENEN
+    // LISTE und feuerte deshalb praktisch nie. Die neue Frage lautet:
+    // wer ist sonst noch rein, und meint er es ernst? Dreissig
+    // Centbetrag-Kaeufe sehen in jeder Kaeuferzahl wie Nachfrage aus
+    // und sind das Gegenteil.
+    assert.strictEqual(wl.CROWD_ERNST_SOL, 0.25);
+    assert.strictEqual(typeof wl.recentBuyersOf, "function");
+  });
+
+  await check("ohne Schluessel liefert der Zusammenlauf nichts statt zu werfen", () => {
+    const alt = process.env.HELIUS_API_KEY;
+    delete process.env.HELIUS_API_KEY;
+    return wl.recentBuyersOf("MemeMint111111111111111111111111111111111111", 30).then((res) => {
+      if (alt) process.env.HELIUS_API_KEY = alt;
+      assert.strictEqual(res.keyMissing, true);
+      assert.strictEqual(res.ernsthaft, 0);
+    });
+  });
+
   await check("die ersten Raenge gehoeren den Bots und werden uebersprungen", () => {
     // Der Befund, der den ganzen Ansatz umgestellt hat: fuenf von fuenf
     // gefundenen Wallets waren Maschinen. "Wer war als Erster drin?"
