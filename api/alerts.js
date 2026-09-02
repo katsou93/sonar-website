@@ -17,6 +17,7 @@
  */
 
 const { buildFeed } = require("./_lib/feed");
+const { autoScout } = require("./_lib/wallets");
 const { send, fail } = require("./_lib/respond");
 
 const TELEGRAM_LIMIT = 6; // nie mehr als 6 Nachrichten pro Lauf - sonst ist es Spam
@@ -78,6 +79,26 @@ module.exports = async function handler(req, res) {
       }
     }
 
+    // Der Zusammenlauf: mehrere unabhaengige Kundschafter im selben Coin.
+    // Das ist das staerkste Signal, das dieses Werkzeug erzeugen kann -
+    // deshalb laeuft es ausserhalb der normalen Trefferliste und wird
+    // immer gemeldet, solange es frisch ist.
+    let clusterSent = 0;
+    if (!dryRun && botToken && chatId) {
+      try {
+        const scouted = await autoScout({ coins: 4, established: 3, follow: 4 });
+        for (const cluster of (scouted.clusters || []).slice(0, 2)) {
+          if (cluster.wallets < 2) continue;
+          // Nur frische Zusammenlaeufe - sonst meldet jeder Lauf denselben.
+          if (!cluster.lastAt || Date.now() / 1000 - cluster.lastAt > windowMinutes * 60) continue;
+          if (await sendTelegram(botToken, chatId, formatCluster(cluster))) clusterSent++;
+        }
+      } catch (err) {
+        // Die Kundschafter sind ein Zusatz. Faellt Helius aus, laeuft der
+        // normale Alarm trotzdem.
+      }
+    }
+
     const hits = crossHits.concat(feed.items, watchHits).slice(0, TELEGRAM_LIMIT);
     if (dryRun) {
       return send(res, 200, {
@@ -102,11 +123,30 @@ module.exports = async function handler(req, res) {
     const results = await Promise.all(hits.map((hit) => sendTelegram(botToken, chatId, formatMessage(hit))));
     const sent = results.filter(Boolean).length;
 
-    send(res, 200, { ok: true, checked: feed.scanned, matched: hits.length, sent: sent });
+    send(res, 200, { ok: true, checked: feed.scanned, matched: hits.length, sent: sent, clusters: clusterSent });
   } catch (err) {
     fail(res, 502, (err && err.message) || "Alarmlauf fehlgeschlagen.", "ALERTS_FAILED");
   }
 };
+
+function formatCluster(cluster) {
+  const money = (n) => (n == null ? "?" : n >= 1e6 ? "$" + (n / 1e6).toFixed(1) + "M" : "$" + Math.round(n / 100) / 10 + "k");
+  const coin = cluster.coin || {};
+  const lines = [
+    "\u{1F6A8} <b>Zusammenlauf: " + cluster.wallets + " Kundschafter im selben Coin</b>",
+    "<b>" + escapeHtml(cluster.symbol || "?") + "</b>" +
+      (cluster.score != null ? "  unser Score <b>" + cluster.score + "/100</b>" : ""),
+    cluster.buys + " Käufe · " + cluster.solTotal + " SOL zusammen" +
+      (coin.marketCap ? " · MCap " + money(coin.marketCap) : ""),
+    (coin.organicShareH1 != null ? Math.round(coin.organicShareH1 * 100) + "% echtes Volumen" : "Echtheit unbekannt") +
+      (coin.liquidityUsd ? " · Liq " + money(coin.liquidityUsd) : ""),
+    '<a href="https://pump.fun/coin/' + escapeHtml(cluster.mint) + '">pump.fun</a>',
+    "<code>" + escapeHtml(cluster.mint) + "</code>",
+    "",
+    "Sie sind vor dir drin. Erst im Scanner prüfen.",
+  ];
+  return lines.join("\n");
+}
 
 function formatMessage(item) {
   const flag = item.buzzTerm
