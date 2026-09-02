@@ -269,6 +269,9 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
 .kind.klein{background:rgba(255,197,49,.13);color:var(--yel)}
 .kind.streuer{background:rgba(255,255,255,.05);color:var(--mu2)}
 .kind.einmal{background:rgba(255,255,255,.05);color:var(--mu2);margin-left:5px}
+.plan{margin-top:8px;padding:7px 9px;border-radius:7px;background:rgba(20,241,149,.07);
+  border:1px solid rgba(20,241,149,.22);font-size:12px;line-height:1.5}
+.plan b{color:var(--grn)}
 .scout.streuer{opacity:.62}
 .scout.schwach{opacity:.82}
 .scout.position{border-color:rgba(20,241,149,.32);background:rgba(20,241,149,.04)}
@@ -1018,6 +1021,26 @@ function geprueft(j){
   return coins + " Coins untersucht, " + kaeufer + " Käufer angeschaut";
 }
 
+/**
+ * Verdient dieser Mensch Geld? Die Frage, die vorher nie gestellt wurde.
+ *
+ * Frueh bei einem Gewinner dabei gewesen zu sein heisst gar nichts -
+ * zu jedem Coin, der laeuft, gibt es vierzig fruehe Kaeufer, und die
+ * meisten davon verlieren bei fast allem anderen. Hier steht deshalb,
+ * was die Wallet mit ihren ABGESCHLOSSENEN Positionen gemacht hat.
+ */
+function bilanzTxt(b){
+  if(!b) return '<span class="mu2">Bilanz noch nicht geprüft</span>';
+  if(!b.genug){
+    return '<span class="mu2">Bilanz: nur '+(b.trades||0)+' abgeschlossene Positionen'+
+      ((b.offen||0) ? ', '+b.offen+' noch offen' : '')+' — zu wenig für eine Aussage</span>';
+  }
+  var farbe = b.quote >= 55 ? "var(--grn)" : b.quote >= 40 ? "var(--yel)" : "var(--red)";
+  return 'Bilanz: <b style="color:'+farbe+'">'+b.quote+'% im Plus</b> aus '+b.trades+' verkauften Positionen'+
+    ' · Mittelwert <b>'+b.median+'×</b>'+
+    ((b.sechsfach||0) ? ' · <b style="color:var(--grn)">'+b.sechsfach+'× versechsfacht</b>' : ' · <span class="mu2">nie versechsfacht</span>');
+}
+
 function scoutRow(sc){
   var det = sc.coins.map(function(c){
     return esc(c.symbol||"?") + " <b>als " + c.rank + ".</b>" +
@@ -1036,7 +1059,8 @@ function scoutRow(sc){
       '<div class="det">früh dabei bei: '+det+'</div>'+
       '<div class="det">Einsatz beim Einstieg: <b>'+(sc.medianSol||0)+' SOL</b> im Mittel'+
         (sc.onEstablished ? ' · <b style="color:var(--grn)">'+sc.onEstablished+'× in etablierten Coins</b>' : '')+
-      '</div></div>'+
+      '</div>'+
+      '<div class="det">'+bilanzTxt(sc.bilanz)+'</div></div>'+
     '<button class="btn '+(kind==="position"?"btn-p":"btn-g")+' btn-sm" data-follow="'+esc(sc.wallet)+'">verfolgen</button>'+
   '</div>';
 }
@@ -1259,6 +1283,26 @@ function fallbackCopy(text){
  * Ein Alarmfenster aufmachen.
  * o = { kind, titel, symbol, name, mint, info }
  */
+/**
+ * Der Ausstieg gehoert in dieselbe Meldung wie der Einstieg.
+ *
+ * Ein Signal ohne Zielmarke ist kein Plan, sondern eine Einladung, zu
+ * lange drin zu bleiben. Genau daran scheitern die meisten kleinen
+ * Positionen: nicht am Einstieg, sondern daran, dass niemand vorher
+ * aufgeschrieben hat, wann er verkauft. Deshalb steht die Zahl hier,
+ * bevor du kaufst - nicht danach.
+ */
+var EINSATZ_EUR = 5;
+var ZIEL_EUR = 30;
+function planTxt(m){
+  var c = m.coin || {};
+  if(!c.marketCap || !m.zielMcap) return "";
+  return '<div class="plan">'+
+    '<b>'+EINSATZ_EUR+' € rein</b> → verkaufen bei <b>'+money(m.zielMcap)+'</b> MCap = <b>'+ZIEL_EUR+' €</b>'+
+    '<span class="mu2"> · von '+money(c.marketCap)+' aus '+Math.round(m.zielMcap/c.marketCap)+'×</span>'+
+    '</div>';
+}
+
 function popAlert(o){
   var box = el("alerts");
   if(!box) return;
@@ -1574,7 +1618,8 @@ function sNotify(moves){
             (c.organicShareH1 != null ? " · " + Math.round(c.organicShareH1*100) + "% echtes Volumen" : "") +
             (c.ageMinutes != null ? " · " + age(c.ageMinutes) + " alt" : "") +
             ((m.why||[]).length ? '<br><span style="color:var(--grn)">' + esc(m.why.join(" · ")) + '</span>' : "") +
-            ((m.topFlags||[]).length ? '<br><span style="color:var(--yel)">⚠ ' + esc(m.topFlags.map(function(f){return f.title;}).slice(0,2).join(" · ")) + '</span>' : "")
+            ((m.topFlags||[]).length ? '<br><span style="color:var(--yel)">⚠ ' + esc(m.topFlags.map(function(f){return f.title;}).slice(0,2).join(" · ")) + '</span>' : "") +
+            planTxt(m)
     });
   });
   var grenze = Date.now() - 86400000, sauber = {};
