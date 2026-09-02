@@ -935,6 +935,16 @@ async function main() {
     assert.strictEqual(wl.POSITION_SOL, 0.5);
   });
 
+  await check("ein Coin kann nicht in beiden Durchgaengen zaehlen", () => {
+    // Live beobachtet: MADE erfuellte die Kriterien beider Listen. Eine
+    // Wallet haette dadurch zwei Treffer aus einem Coin bekommen - und
+    // die Mindestzahl von zwei waere sinnlos geworden.
+    const src = require("fs").readFileSync(require("path").join(__dirname, "..", "api", "_lib", "wallets.js"), "utf8");
+    assert.ok(src.indexOf("coin.ageMinutes > 10080) continue") !== -1,
+      "die Launch-Suche muss bei 7 Tagen aufhoeren");
+    assert.ok(src.indexOf("jobSeen") !== -1, "es fehlt der Riegel gegen doppelte Coins");
+  });
+
   await check("die Suche nach etablierten Coins ist verdrahtet", () => {
     assert.strictEqual(typeof wl.buyersBefore, "function");
     assert.strictEqual(typeof wl.establishedRunners, "function");
