@@ -257,6 +257,13 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
 .cl{display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;padding:15px 17px;
   border:1px solid rgba(20,241,149,.4);border-radius:12px;background:rgba(20,241,149,.07);margin-bottom:8px;cursor:pointer}
 .cl .n{font-family:var(--mono);font-size:24px;font-weight:650;color:var(--grn);text-align:center;min-width:34px}
+.scout{display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;padding:13px 16px;
+  border:1px solid var(--border);border-radius:11px;background:var(--panel);margin-bottom:8px}
+.scout .hits{font-family:var(--mono);font-size:20px;font-weight:650;color:var(--grn);text-align:center;min-width:30px}
+.scout .adr{font-family:var(--mono);font-size:13px;color:var(--tx)}
+.scout .det{font-size:12px;color:var(--mu2);margin-top:4px;line-height:1.5}
+.scout .det b{color:var(--mu);font-weight:600}
+@media(max-width:640px){.scout{grid-template-columns:auto 1fr}}
 @media(max-width:640px){.move,.cl{grid-template-columns:1fr;gap:6px}.move .amt,.move .sub{text-align:left}}
 .terms{display:flex;gap:6px;flex-wrap:wrap;padding:2px 2px 0}
 .term{font-family:var(--mono);font-size:11.5px;padding:4px 9px;border-radius:6px;border:1px solid var(--border);
@@ -413,6 +420,7 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
       <input class="winput" id="s-addr" placeholder="Wallet-Adresse einfügen …" spellcheck="false" autocomplete="off">
       <input class="winput" id="s-name" style="max-width:150px" placeholder="Spitzname (optional)" spellcheck="false" autocomplete="off">
       <button class="btn btn-g btn-sm" id="s-addbtn">Verfolgen</button>
+      <button class="btn btn-p btn-sm" id="s-scout">Kundschafter suchen</button>
       <div class="hspace" style="flex:1"></div>
       <label class="autolabel"><input type="checkbox" id="s-buys" checked> nur Käufe</label>
       <label class="autolabel"><input type="checkbox" id="s-auto"> alle 3 min</label>
@@ -926,11 +934,91 @@ function harvestBox(){
   '</div>';
 }
 
+/**
+ * Ein Kundschafter: eine Wallet, die bei MEHREREN Coins frueh dabei war,
+ * die danach gelaufen sind. Einmal ist Glueck, zweimal ist ein Muster.
+ */
+function scoutRow(sc){
+  var det = sc.coins.map(function(c){
+    return esc(c.symbol||"?") + " <b>als " + c.rank + ".</b>";
+  }).join(" · ");
+  return '<div class="scout">'+
+    '<div class="hits">'+sc.hits+'</div>'+
+    '<div style="min-width:0"><div class="adr">'+esc(shortAddr(sc.wallet))+'</div>'+
+      '<div class="det">früh dabei bei: '+det+'</div></div>'+
+    '<button class="btn btn-g btn-sm" data-follow="'+esc(sc.wallet)+'">verfolgen</button>'+
+  '</div>';
+}
+
+/** Die Selbstsuche: Kundschafter finden und zeigen, was sie kaufen. */
+function loadScouts(){
+  var out = el("s-out");
+  out.innerHTML = '<div class="empty">Suche läuft — die App schaut nach, welche Coins zuletzt gelaufen sind '+
+    'und wer sie früh gekauft hat. Das dauert etwa 10 Sekunden.</div>';
+
+  apiFetch("/api/wallets?discover=1")
+    .then(function(j){
+      if(!j.ok){ out.innerHTML = '<div class="err">'+esc(j.error)+'</div>'; return; }
+      if(j.keyMissing){ out.innerHTML = setupBox() + harvestBox(); return; }
+
+      var html = "";
+      html += '<div class="wsec" style="margin-top:0"><h3>Kundschafter — von der App selbst gefunden</h3>'+
+        '<p class="sub">Die App nimmt die Coins, die in den letzten Tagen wirklich gelaufen sind, und schaut nach, '+
+        '<b>wer sie gekauft hat, als sie noch nichts waren</b>. Wer bei mehreren dabei war, steht hier. '+
+        'Die Zahl links ist die Anzahl der Treffer — einmal früh dabei zu sein ist Glück, mehrmals nicht.</p>'+
+        (j.scouts && j.scouts.length
+          ? j.scouts.map(scoutRow).join("")
+          : '<div class="empty">Keine Wallet war bei mehreren Gewinnern früh dabei.<br>'+
+            '<span class="mu2">Das passiert, wenn die letzten Läufer nichts gemeinsam hatten — ein ehrliches Ergebnis, kein Fehler.</span></div>')+
+        ((j.winners && j.winners.length)
+          ? '<p class="sub" style="margin-top:12px">Untersucht: '+j.winners.map(function(w){
+              return esc(w.symbol||"?") + " " + pctTxt(w.priceChangeH24,0);
+            }).join(" · ")+'</p>'
+          : '')+
+        '</div>';
+
+      if(j.clusters && j.clusters.length){
+        html += '<div class="wsec"><h3>Und hier laufen mehrere gleichzeitig rein</h3>'+
+          '<p class="sub">Das stärkste Signal: mehrere unabhängige Kundschafter im selben Coin.</p>'+
+          j.clusters.map(clusterRow).join("")+'</div>';
+      }
+
+      html += '<div class="wsec"><h3>Was sie gerade kaufen</h3>'+
+        '<p class="sub">Die letzten Käufe der gefundenen Wallets, mit <b>unserer</b> Prüfung daneben. '+
+        'Das ist ein Hinweis, wo du hinschauen solltest — keine Empfehlung. Wer kopiert, ist immer hinten dran.</p>'+
+        ((j.moves && j.moves.length) ? j.moves.map(moveRow).join("")
+          : '<div class="empty">Die Kundschafter haben zuletzt nichts gekauft.</div>')+
+        '</div>';
+
+      html += harvestBox();
+      out.innerHTML = html;
+
+      out.querySelectorAll("[data-addr]").forEach(function(node){
+        node.addEventListener("click", function(){
+          document.querySelector('.tab[data-view="scanner"]').click();
+          window.scrollTo(0,0);
+          scan(node.getAttribute("data-addr"));
+        });
+      });
+      out.querySelectorAll("[data-follow]").forEach(function(btn){
+        btn.addEventListener("click", function(){
+          var err = sAdd(btn.getAttribute("data-follow"), "");
+          btn.textContent = err ? "schon dabei" : "wird verfolgt";
+          btn.disabled = true;
+          renderWallets();
+        });
+      });
+    })
+    .catch(function(e){ if(e && e.locked) return; out.innerHTML = '<div class="err">Netzwerkfehler: '+esc(e.message)+'</div>'; });
+}
+
 function loadSpuren(){
   renderWallets();
   var out = el("s-out");
   var list = sLoad();
-  if(!list.length){ out.innerHTML = harvestBox(); return; }
+  // Ohne eigene Wallets sucht die App von selbst - niemand soll erst
+  // Adressen zusammentragen muessen, um etwas zu sehen.
+  if(!list.length){ loadScouts(); return; }
   if(!out.querySelector(".move")) out.innerHTML = '<div class="skel" style="height:80px"></div><div class="skel" style="height:80px"></div>';
 
   var qs = "addrs=" + encodeURIComponent(list.map(function(w){ return w.addr; }).join(","));
@@ -1006,6 +1094,7 @@ el("s-addbtn").addEventListener("click", function(){
 });
 el("s-addr").addEventListener("keydown", function(e){ if(e.key === "Enter") el("s-addbtn").click(); });
 el("s-name").addEventListener("keydown", function(e){ if(e.key === "Enter") el("s-addbtn").click(); });
+el("s-scout").addEventListener("click", loadScouts);
 el("s-reload").addEventListener("click", loadSpuren);
 el("s-buys").addEventListener("change", loadSpuren);
 el("s-auto").addEventListener("change", function(){
