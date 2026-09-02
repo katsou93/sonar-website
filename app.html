@@ -268,7 +268,9 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
 .kind.position{background:rgba(20,241,149,.14);color:var(--grn)}
 .kind.klein{background:rgba(255,197,49,.13);color:var(--yel)}
 .kind.streuer{background:rgba(255,255,255,.05);color:var(--mu2)}
+.kind.einmal{background:rgba(255,255,255,.05);color:var(--mu2);margin-left:5px}
 .scout.streuer{opacity:.62}
+.scout.schwach{opacity:.82}
 .scout.position{border-color:rgba(20,241,149,.32);background:rgba(20,241,149,.04)}
 .numin{width:48px;padding:4px 7px;border-radius:7px;border:1px solid var(--border);background:rgba(255,255,255,.03);
   color:var(--tx);font-family:var(--mono);font-size:12px;outline:none;text-align:center}
@@ -1007,16 +1009,30 @@ function harvestBox(){
  */
 var KIND_LABEL = { position: "echte Position", klein: "kleiner Einsatz", streuer: "Streuer" };
 
+/** Was wurde ueberhaupt untersucht? Ohne diese Zahl sieht ein leeres
+ *  Ergebnis wie ein kaputtes Werkzeug aus, obwohl es gearbeitet hat. */
+function geprueft(j){
+  var coins = (j.winners||[]).length;
+  var kaeufer = (j.winners||[]).reduce(function(n,w){ return n + (w.buyers||0); }, 0);
+  if(!coins) return "Es lief gerade kein Coin, der die Kriterien erfüllt";
+  return coins + " Coins untersucht, " + kaeufer + " Käufer angeschaut";
+}
+
 function scoutRow(sc){
   var det = sc.coins.map(function(c){
     return esc(c.symbol||"?") + " <b>als " + c.rank + ".</b>" +
       (c.stage === "etabliert" ? ' <span class="mu2">(etabliert)</span>' : '');
   }).join(" · ");
   var kind = sc.kind || "streuer";
-  return '<div class="scout '+esc(kind)+'">'+
+  // Ein Treffer oder mehrere? Der Unterschied gehoert sichtbar, nicht
+  // in eine Rangliste versteckt.
+  var stufe = sc.tier === "einmal"
+    ? '<span class="kind einmal">nur 1 Coin</span>'
+    : '';
+  return '<div class="scout '+esc(kind)+(sc.tier==="einmal"?" schwach":"")+'">'+
     '<div class="hits">'+sc.hits+'</div>'+
     '<div style="min-width:0"><div class="adr">'+esc(shortAddr(sc.wallet))+
-      '<span class="kind '+esc(kind)+'">'+esc(KIND_LABEL[kind]||kind)+'</span></div>'+
+      '<span class="kind '+esc(kind)+'">'+esc(KIND_LABEL[kind]||kind)+'</span>'+stufe+'</div>'+
       '<div class="det">früh dabei bei: '+det+'</div>'+
       '<div class="det">Einsatz beim Einstieg: <b>'+(sc.medianSol||0)+' SOL</b> im Mittel'+
         (sc.onEstablished ? ' · <b style="color:var(--grn)">'+sc.onEstablished+'× in etablierten Coins</b>' : '')+
@@ -1054,7 +1070,9 @@ function loadScouts(){
         (echte.length
           ? '<h3 style="margin-top:18px">Mit echtem Einsatz — diesen kann man folgen</h3>'+echte.map(scoutRow).join("")
           : '<div class="empty">Keine Wallet mit ernsthaftem Einsatz gefunden.<br>'+
-            '<span class="mu2">Ein ehrliches Ergebnis: gerade laufen offenbar nur Streuer richtig.</span></div>')+
+            '<span class="mu2">'+geprueft(j)+' — keiner davon war mehrfach früh dabei oder '+
+            'ist mit echtem Geld unter den ersten fünfzehn eingestiegen. '+
+            'Das ist ein Ergebnis, kein Fehler: in der nächsten Stunde sieht es wieder anders aus.</span></div>')+
         (streuer.length
           ? '<h3 style="margin-top:22px">Streuer — nur zur Kenntnis</h3>'+
             '<p class="sub">Mehrfach früh dabei, aber mit Centbeträgen. Nicht zum Nachmachen — nur damit du siehst, dass die Suche funktioniert.</p>'+
