@@ -1976,8 +1976,11 @@ function alarmNachschaerfen(card, m){
 
   // 1. Die volle Prüfung.
   apiFetch("/api/scan?address=" + encodeURIComponent(m.mint))
-    .then(function(j){
-      if(!j || !j.ok || j.score == null) return;
+    .then(function(res){
+      // Die Scan-Route verpackt ihr Ergebnis in "report" - das direkt
+      // auszulesen war ein Fehler und liess die Zeile still leer.
+      var j = (res && res.report) || null;
+      if(!res || !res.ok || !j || j.score == null) return;
       var vor = m.score;
       var farbe = j.score >= 70 ? "var(--grn)" : j.score >= 50 ? "var(--yel)" : "var(--red)";
       var zeile = 'Volle Prüfung: <b style="color:'+farbe+'">'+j.score+'</b>';
