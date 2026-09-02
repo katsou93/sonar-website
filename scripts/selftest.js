@@ -900,6 +900,12 @@ async function main() {
       if (alt) process.env.HELIUS_API_KEY = alt;
       assert.strictEqual(res.keyMissing, true);
       assert.deepStrictEqual(res.moves, []);
+      // Und der Fehler, der genau das kaputt gemacht hat: die Antwort
+      // darf KEIN eigenes ok mitbringen. Die Route setzt ok:true, und ein
+      // ok:false von hier hat es beim Zusammenfuehren ueberschrieben - die
+      // App zeigte eine leere rote Fehlerbox statt der Anleitung.
+      assert.ok(!("ok" in res), "watch() darf kein eigenes ok setzen");
+      assert.strictEqual(Object.assign({ ok: true }, res).ok, true);
     });
   });
 
