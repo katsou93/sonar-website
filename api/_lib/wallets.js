@@ -363,7 +363,7 @@ const { isNoise } = require("./feed");
 
 /** Coins, die in den letzten Tagen tatsaechlich gelaufen sind. */
 async function winners(limit) {
-  const max = limit || 8;
+  const max = limit || 10;
   return cached("scout:winners", 60 * 60 * 1000, async () => {
     const lists = await Promise.allSettled([jup.topOrganic("24h"), jup.topTraded("24h"), jup.topOrganic("6h")]);
     const seen = new Set();
@@ -377,9 +377,15 @@ async function winners(limit) {
         if (isNoise(coin)) continue;
         // Alt genug, um gelaufen zu sein - jung genug, dass die ersten
         // Kaeufe noch in einer Abfrage erreichbar sind.
-        if (coin.ageMinutes == null || coin.ageMinutes < 360 || coin.ageMinutes > 20160) continue;
-        if ((coin.liquidityUsd || 0) < 30000) continue;
-        if ((coin.priceChangeH24 || 0) < 40) continue;
+        //
+        // Erster Live-Lauf: mit 6 Stunden bis 14 Tagen und +40% blieben nur
+        // drei Coins uebrig, und bei drei Coins ueberschneidet sich fast
+        // nie etwas. Die Spanne ist deshalb weiter - lieber ein paar
+        // schwaechere Kandidaten pruefen als gar keine Ueberschneidung
+        // finden koennen.
+        if (coin.ageMinutes == null || coin.ageMinutes < 120 || coin.ageMinutes > 43200) continue;
+        if ((coin.liquidityUsd || 0) < 20000) continue;
+        if ((coin.priceChangeH24 || 0) < 25) continue;
         out.push(coin);
       }
     }
@@ -435,7 +441,7 @@ async function findScouts(opts) {
   const options = opts || {};
   if (!hasKey()) return { keyMissing: true, scouts: [], winners: [] };
 
-  const coins = await winners(options.coins || 8);
+  const coins = await winners(options.coins || 10);
   if (!coins.length) return { keyMissing: false, scouts: [], winners: [] };
 
   const hits = new Map();
@@ -449,7 +455,13 @@ async function findScouts(opts) {
     } catch (err) {
       continue;
     }
-    checked.push({ address: coin.address, symbol: coin.symbol, priceChangeH24: coin.priceChangeH24, buyers: buyers.length });
+    checked.push({
+      address: coin.address,
+      symbol: coin.symbol,
+      priceChangeH24: coin.priceChangeH24,
+      ageMinutes: coin.ageMinutes,
+      buyers: buyers.length,
+    });
     buyers.forEach((wallet, rank) => {
       const hit = hits.get(wallet) || { wallet: wallet, coins: [], bestRank: 999 };
       hit.coins.push({ symbol: coin.symbol, address: coin.address, rank: rank + 1, priceChangeH24: coin.priceChangeH24 });
