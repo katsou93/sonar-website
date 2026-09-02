@@ -176,7 +176,7 @@ async function recentSwaps(wallet, opts) {
 async function trackWallets(addresses, opts) {
   const options = opts || {};
   const wallets = parseAddresses(addresses);
-  const result = { ok: hasKey(), wallets: wallets, moves: [], errors: {} };
+  const result = { wallets: wallets, moves: [], errors: {} };
   if (!wallets.length || !hasKey()) return result;
 
   for (let i = 0; i < wallets.length; i++) {
@@ -315,7 +315,6 @@ async function watch(addresses, opts) {
   const tracked = await trackWallets(addresses, opts);
   if (tracked.moves.length) await enrich(tracked.moves);
   return {
-    ok: tracked.ok,
     keyMissing: !hasKey(),
     wallets: tracked.wallets,
     moves: tracked.moves,
