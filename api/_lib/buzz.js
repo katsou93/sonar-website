@@ -144,9 +144,54 @@ const SOURCES = [
       const gesehen = new Set();
       let eineGing = false;
 
+      // Reddit-Titel sind ganze Saetze, keine Suchbegriffe. Live
+      // gemessen lieferte die Quelle sonst genau das: "stop", "found",
+      // "attempt", "many", "work" - Grammatik statt Thema.
+      //
+      // Ein Meme-Thema ist aber fast immer ein NAME: ein Mensch, ein
+      // Ort, ein Tier, eine Marke. Und Namen schreibt man im Englischen
+      // gross, mitten im Satz. Genau daran lassen sie sich erkennen.
+      // Das erste Wort faellt weg, weil dort jeder Satz gross anfaengt.
+      //
+      // Das erste Wort ist ein Sonderfall: dort steht oft der wichtigste
+      // Name ueberhaupt ("Trump kuendigt an...", "Nepal protests..."),
+      // aber genauso oft nur ein Satzanfang. Deshalb faellt es nur weg,
+      // wenn es zu dieser kurzen Liste gehoert.
+      const ANFANG = {
+        the:1, this:1, that:1, these:1, those:1, my:1, our:1, your:1, his:1, her:1, their:1,
+        found:1, just:1, look:1, looking:1, some:1, someone:1, what:1, when:1, where:1,
+        why:1, how:1, after:1, before:1, first:1, last:1, best:1, worst:1, does:1, did:1,
+        can:1, could:1, would:1, should:1, here:1, there:1, they:1, guys:1, anyone:1,
+        finally:1, apparently:1, breaking:1, update:1, help:1, need:1, saw:1, new:1
+      };
+
+      const eigennamen = (satz) => {
+        const woerter = String(satz || "").split(/\s+/);
+        const treffer = [];
+        const erst = (woerter[0] || "").replace(/[^A-Za-z]/g, "");
+        if (erst.length >= 4 && erst.length <= 20 && /^[A-Z][a-z]/.test(erst) && !ANFANG[erst.toLowerCase()]) {
+          treffer.push(erst);
+        }
+        for (let i = 1; i < woerter.length; i++) {
+          const roh = woerter[i].replace(/[^A-Za-z]/g, "");
+          if (roh.length < 4 || roh.length > 20) continue;
+          // Gross beginnend, aber nicht komplett gross - VOLLKAPITALE
+          // sind auf Reddit Betonung ("THIS IS INSANE"), kein Name.
+          if (!/^[A-Z][a-z]/.test(roh)) continue;
+          treffer.push(roh);
+        }
+        return treffer;
+      };
+
       const nimm = (titel, punkte, alterSek) => {
         if (!titel || gesehen.has(titel)) return;
         gesehen.add(titel);
+        const namen = eigennamen(titel);
+        // Ein Titel ohne einen einzigen Namen hat kein Thema, ueber das
+        // sich ein Coin machen liesse. Der faellt hier weg statt
+        // spaeter als Grammatik-Rauschen aufzutauchen.
+        if (!namen.length) return;
+        titel = namen.join(" ");
         out.push({
           title: String(titel),
           // Aufwaerts-Geschwindigkeit statt absoluter Punktzahl: ein
