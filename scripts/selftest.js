@@ -935,6 +935,53 @@ async function main() {
     assert.strictEqual(wl.POSITION_SOL, 0.5);
   });
 
+  console.log("\nRelevanz: was ist eine Meldung wert?");
+  const POS = { wallet: "w1", kind: "position", medianSol: 0.05 };
+  const rel = (move, scout) => { wl.relevanceOf(move, scout || POS, 150); return move; };
+
+  await check("derselbe Betrag zaehlt in einem kleinen Coin mehr", () => {
+    // Der Kern der ganzen Umstellung: 0,3 SOL sind in einem 5k-Coin ein
+    // Prozent des Dings, in einem 5M-Coin nichts.
+    const klein = rel({ wallet: "w1", solAmount: 0.3, score: 66, coin: { marketCap: 5000 } });
+    const gross = rel({ wallet: "w1", solAmount: 0.3, score: 66, coin: { marketCap: 5000000 } });
+    assert.ok(klein.relevance > gross.relevance,
+      "kleiner Coin haette hoeher liegen muessen: " + klein.relevance + " vs " + gross.relevance);
+    assert.ok(klein.sharePct > 0.5, "Anteil am Coin fehlt: " + klein.sharePct);
+  });
+
+  await check("ein grosser Einsatz in Schrott loest KEINEN Alarm aus", () => {
+    // Live-Befund: 2 SOL in einen Coin mit unserem Score 31 kamen auf 65
+    // Relevanz, weil die Qualitaet nur ein Abzug war. Wie ueberzeugt
+    // jemand reingeht, aendert nichts daran, ob der Contract nachdrucken
+    // kann - deshalb ist die Qualitaet jetzt ein Faktor.
+    const schrott = rel({ wallet: "w1", solAmount: 2, score: 31, coin: { marketCap: 8000 } });
+    assert.ok(schrott.relevance < 40, "haette unter der Meldeschwelle bleiben muessen: " + schrott.relevance);
+  });
+
+  await check("der Ueberzeugungskauf schlaegt alles", () => {
+    const gut = rel({ wallet: "w1", solAmount: 1, score: 82, coin: { marketCap: 5000 } });
+    assert.ok(gut.relevance >= 90, "zu niedrig bewertet: " + gut.relevance);
+    assert.ok(gut.why.join(" ").indexOf("üblicher Einsatz") !== -1);
+  });
+
+  await check("ein Streuer mit Centbetrag bleibt unten", () => {
+    const streuer = rel({ wallet: "w2", solAmount: 0.03, score: 55, coin: { marketCap: 3000 } },
+      { wallet: "w2", kind: "streuer", medianSol: 0.03 });
+    assert.ok(streuer.relevance < 40, "Streuer haette nicht melden duerfen: " + streuer.relevance);
+  });
+
+  await check("ohne eigene Pruefung wird gedaempft, nicht geglaubt", () => {
+    const ohne = rel({ wallet: "w1", solAmount: 1, score: null, coin: { marketCap: 5000 } });
+    const mit = rel({ wallet: "w1", solAmount: 1, score: 82, coin: { marketCap: 5000 } });
+    assert.ok(ohne.relevance < mit.relevance);
+  });
+
+  await check("die Begruendung ist immer lesbar, nie eine nackte Zahl", () => {
+    const m = rel({ wallet: "w1", solAmount: 1, score: 82, coin: { marketCap: 5000 } });
+    assert.ok(Array.isArray(m.why) && m.why.length >= 2, "zu wenig Begruendung: " + JSON.stringify(m.why));
+    m.why.forEach((w) => assert.ok(typeof w === "string" && w.length > 3));
+  });
+
   await check("der Puls verlangt einen Schluessel, wirft aber nicht", () => {
     const alt = process.env.HELIUS_API_KEY;
     delete process.env.HELIUS_API_KEY;
