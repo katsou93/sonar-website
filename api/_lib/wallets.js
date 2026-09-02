@@ -426,7 +426,9 @@ async function winners(limit) {
  * dahinter; ueber buyFromSwap pruefen wir, ob er den Coin auch wirklich
  * bekommen hat und nicht abgegeben.
  */
-async function earlyBuyers(mint, howMany) {
+const ERSTE_RAENGE_BOTS = 15;
+
+async function earlyBuyers(mint, howMany, opts) {
   const key = process.env.HELIUS_API_KEY;
   if (!key) return [];
   const url =
@@ -453,8 +455,33 @@ async function earlyBuyers(mint, howMany) {
   }
 
   // Wer in EINEM Coin dauernd kauft, ist ein Bot oder der Pool selbst.
+  //
+  // Und dann die Aenderung, die den ganzen Ansatz erst brauchbar macht.
+  //
+  // Live gemessen, an fuenf von fuenf gefundenen Wallets: alle waren
+  // Bots. Zwei mit unlesbaren Unterkonten, zwei mit anderthalb bis fuenf
+  // Minuten Haltedauer. Keine einzige, der ein Mensch folgen koennte.
+  //
+  // Das lag nicht an der Bewertung, sondern an der Frage. "Wer war als
+  // Erster drin?" hat genau eine richtige Antwort, und die lautet immer:
+  // ein Sniper-Bot. Er ist in Sekunde null da, weil er nichts anderes
+  // tut, als in Sekunde null da zu sein - bei diesem Coin und bei
+  // dreihundert anderen am selben Tag. Ihn zu finden ist keine
+  // Leistung, und ihm zu folgen ist unmoeglich: bis du seinen Kauf
+  // siehst, hat er laengst verkauft.
+  //
+  // Es gibt zwei Arten von "frueh", und nur eine davon nuetzt dir:
+  //
+  //   Bot-frueh    Sekunde 0 bis 60, Rang 1 bis etwa 15. Maschinen.
+  //   Mensch-frueh Danach, vor dem Anstieg. Jemand hat den Coin
+  //                gesehen, gepruefT und sich entschieden.
+  //
+  // Deshalb ueberspringen wir die ersten Raenge. Wir suchen nicht mehr
+  // den Schnellsten, sondern den Ersten, der nachgedacht hat.
+  const abRang = opts && opts.abRang != null ? opts.abRang : ERSTE_RAENGE_BOTS;
   return Array.from(first.values())
     .filter((b) => counts.get(b.wallet) <= 3)
+    .filter((b) => b.rank > abRang)
     .slice(0, howMany || 40);
 }
 
@@ -795,7 +822,9 @@ module.exports.BILANZ_MIN_TRADES = BILANZ_MIN_TRADES;
 module.exports.musterVon = musterVon;
 module.exports.DUMP_MINUTEN = DUMP_MINUTEN;
 
-const EINMAL_RANG = 15;
+// Frueher stand hier 15 - also genau das Bot-Fenster, das wir jetzt
+// ueberspringen. Das Fenster liegt dahinter: die ersten Menschen.
+const EINMAL_RANG = 45;
 const EINMAL_SOL = 0.3;
 const EINMAL_LAUF = 100;
 
@@ -990,6 +1019,7 @@ module.exports.POSITION_SOL = POSITION_SOL;
 module.exports.findScouts = findScouts;
 module.exports.autoScout = autoScout;
 module.exports.SCOUT_MIN_HITS = SCOUT_MIN_HITS;
+module.exports.ERSTE_RAENGE_BOTS = ERSTE_RAENGE_BOTS;
 module.exports.qualifiesAlone = qualifiesAlone;
 
 /* ------------------------------------------------------------------ *
