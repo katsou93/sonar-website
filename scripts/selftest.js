@@ -1094,7 +1094,20 @@ async function main() {
   });
 
   await check("spaet eingestiegen zaehlt nicht", () => {
-    assert.strictEqual(wl.qualifiesAlone(einTreffer({ rank: 40 })), false);
+    // Das Rangfenster liegt jetzt HINTER den Bots: Rang 1 bis 15 sind
+    // Maschinen und werden gar nicht erst gemeldet, ab Rang 45 ist es
+    // kein frueher Einstieg mehr, sondern Hinterherlaufen.
+    assert.strictEqual(wl.qualifiesAlone(einTreffer({ rank: 80 })), false);
+    assert.strictEqual(wl.qualifiesAlone(einTreffer({ rank: 30 })), true);
+  });
+
+  await check("die ersten Raenge gehoeren den Bots und werden uebersprungen", () => {
+    // Der Befund, der den ganzen Ansatz umgestellt hat: fuenf von fuenf
+    // gefundenen Wallets waren Maschinen. "Wer war als Erster drin?"
+    // hat immer dieselbe Antwort - ein Sniper-Bot, der in Sekunde null
+    // da ist, weil er nichts anderes tut. Ihm zu folgen ist unmoeglich:
+    // bis du seinen Kauf siehst, hat er verkauft.
+    assert.strictEqual(wl.ERSTE_RAENGE_BOTS, 15);
   });
 
   await check("frueh in einem Coin, der nicht gelaufen ist, zaehlt nicht", () => {
