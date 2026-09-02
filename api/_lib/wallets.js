@@ -336,3 +336,173 @@ module.exports = {
   recentSwaps,
   BORING_MINTS,
 };
+
+/* ------------------------------------------------------------------ *
+ * Die Selbstsuche: gute Wallets finden, ohne dass jemand sie eintraegt
+ * ------------------------------------------------------------------ */
+
+/**
+ * Adressen von Hand zu sammeln ist Arbeit, und Arbeit, die niemand macht,
+ * findet nicht statt. Also macht die App es selbst - und zwar rueckwaerts:
+ *
+ *   1. Welche Coins sind in den letzten Tagen wirklich gelaufen?
+ *   2. Wer hat die GEKAUFT, als sie noch nichts waren?
+ *   3. Welche dieser Wallets war bei MEHREREN dabei?
+ *
+ * Schritt 3 ist der ganze Punkt. Einmal frueh in einem Gewinner zu sein
+ * ist Glueck - dafuer gibt es an jedem Tag tausende Wallets. Zweimal oder
+ * dreimal unabhaengig frueh dabei zu sein, ist es nicht mehr.
+ *
+ * Und die Grenze, die man kennen muss: das findet auch Insider und Bots,
+ * die frueh drin waren, weil sie den Coin selbst gestartet haben. Deshalb
+ * fliegen Wallets raus, die in FAST ALLEN untersuchten Coins auftauchen -
+ * wer alles kauft, hat nichts gewusst.
+ */
+
+const { isNoise } = require("./feed");
+
+/** Coins, die in den letzten Tagen tatsaechlich gelaufen sind. */
+async function winners(limit) {
+  const max = limit || 8;
+  return cached("scout:winners", 60 * 60 * 1000, async () => {
+    const lists = await Promise.allSettled([jup.topOrganic("24h"), jup.topTraded("24h"), jup.topOrganic("6h")]);
+    const seen = new Set();
+    const out = [];
+    for (const res of lists) {
+      if (res.status !== "fulfilled") continue;
+      for (const asset of res.value || []) {
+        const coin = jup.normalize(asset, null);
+        if (!coin || !coin.address || seen.has(coin.address)) continue;
+        seen.add(coin.address);
+        if (isNoise(coin)) continue;
+        // Alt genug, um gelaufen zu sein - jung genug, dass die ersten
+        // Kaeufe noch in einer Abfrage erreichbar sind.
+        if (coin.ageMinutes == null || coin.ageMinutes < 360 || coin.ageMinutes > 20160) continue;
+        if ((coin.liquidityUsd || 0) < 30000) continue;
+        if ((coin.priceChangeH24 || 0) < 40) continue;
+        out.push(coin);
+      }
+    }
+    out.sort((a, b) => (b.priceChangeH24 || 0) - (a.priceChangeH24 || 0));
+    return out.slice(0, max);
+  });
+}
+
+/**
+ * Wer hat diesen Coin als Erstes gekauft?
+ *
+ * sort-order=asc liefert die AELTESTEN Transaktionen zuerst - genau die,
+ * die uns interessieren. Der Unterzeichner (feePayer) ist der Mensch
+ * dahinter; ueber buyFromSwap pruefen wir, ob er den Coin auch wirklich
+ * bekommen hat und nicht abgegeben.
+ */
+async function earlyBuyers(mint, howMany) {
+  const key = process.env.HELIUS_API_KEY;
+  if (!key) return [];
+  const url =
+    HELIUS + "/v0/addresses/" + mint + "/transactions?api-key=" + encodeURIComponent(key) +
+    "&type=SWAP&sort-order=asc&limit=100";
+
+  // Zwoelf Stunden Cache: die ersten Kaeufer eines Coins aendern sich nie.
+  const txs = await cached("scout:early:" + mint, 12 * 60 * 60 * 1000, async () => {
+    const data = await getJson(url, { source: "helius", timeoutMs: 9000, retries: 0 });
+    return Array.isArray(data) ? data : [];
+  });
+
+  const counts = new Map();
+  const order = [];
+  for (const tx of txs) {
+    const wallet = tx && tx.feePayer;
+    if (!wallet) continue;
+    const move = buyFromSwap(tx, wallet);
+    if (!move || move.side !== "kauf" || move.mint !== mint) continue;
+    counts.set(wallet, (counts.get(wallet) || 0) + 1);
+    if (!order.includes(wallet)) order.push(wallet);
+  }
+
+  // Wer in EINEM Coin dauernd kauft, ist ein Bot oder der Pool selbst.
+  return order.filter((w) => counts.get(w) <= 3).slice(0, howMany || 40);
+}
+
+/** Wie viele Coins muss eine Wallet frueh getroffen haben, um zu zaehlen? */
+const SCOUT_MIN_HITS = 2;
+
+/**
+ * Die Kundschafter finden. Ein Aufruf pro untersuchtem Gewinner-Coin,
+ * sequenziell wegen des Zwei-pro-Sekunde-Limits, zwoelf Stunden gecacht.
+ */
+async function findScouts(opts) {
+  const options = opts || {};
+  if (!hasKey()) return { keyMissing: true, scouts: [], winners: [] };
+
+  const coins = await winners(options.coins || 8);
+  if (!coins.length) return { keyMissing: false, scouts: [], winners: [] };
+
+  const hits = new Map();
+  const checked = [];
+  for (let i = 0; i < coins.length; i++) {
+    const coin = coins[i];
+    if (i > 0) await new Promise((r) => setTimeout(r, 550));
+    let buyers = [];
+    try {
+      buyers = await earlyBuyers(coin.address, 40);
+    } catch (err) {
+      continue;
+    }
+    checked.push({ address: coin.address, symbol: coin.symbol, priceChangeH24: coin.priceChangeH24, buyers: buyers.length });
+    buyers.forEach((wallet, rank) => {
+      const hit = hits.get(wallet) || { wallet: wallet, coins: [], bestRank: 999 };
+      hit.coins.push({ symbol: coin.symbol, address: coin.address, rank: rank + 1, priceChangeH24: coin.priceChangeH24 });
+      hit.bestRank = Math.min(hit.bestRank, rank + 1);
+      hits.set(wallet, hit);
+    });
+  }
+
+  const total = checked.length;
+  const scouts = Array.from(hits.values())
+    .filter((h) => h.coins.length >= SCOUT_MIN_HITS)
+    // Wer in fast allen untersuchten Coins drin war, kauft alles. Das ist
+    // ein Bot, kein Kundschafter - und sein Treffer sagt nichts aus.
+    .filter((h) => total < 4 || h.coins.length <= Math.ceil(total * 0.75))
+    .map((h) => ({
+      wallet: h.wallet,
+      hits: h.coins.length,
+      bestRank: h.bestRank,
+      coins: h.coins.sort((a, b) => a.rank - b.rank).slice(0, 4),
+    }))
+    .sort((a, b) => b.hits - a.hits || a.bestRank - b.bestRank)
+    .slice(0, options.max || 6);
+
+  return { keyMissing: false, scouts: scouts, winners: checked };
+}
+
+/**
+ * Alles in einem: Kundschafter suchen UND gleich schauen, was sie
+ * gerade kaufen. Das ist die Antwort auf "sag mir einfach, welche Coins
+ * von guten Leuten gekauft werden" - ohne dass jemand etwas eintragen
+ * muss.
+ */
+async function autoScout(opts) {
+  const options = opts || {};
+  const found = await findScouts(options);
+  if (found.keyMissing || !found.scouts.length) {
+    return { keyMissing: found.keyMissing, scouts: found.scouts, winners: found.winners, moves: [], clusters: [] };
+  }
+  const addresses = found.scouts.slice(0, options.follow || 5).map((s) => s.wallet);
+  const tracked = await trackWallets(addresses, { buysOnly: true, limit: 10, max: 30 });
+  if (tracked.moves.length) await enrich(tracked.moves);
+  return {
+    keyMissing: false,
+    scouts: found.scouts,
+    winners: found.winners,
+    moves: tracked.moves,
+    clusters: clusters(tracked.moves),
+    errors: tracked.errors,
+  };
+}
+
+module.exports.winners = winners;
+module.exports.earlyBuyers = earlyBuyers;
+module.exports.findScouts = findScouts;
+module.exports.autoScout = autoScout;
+module.exports.SCOUT_MIN_HITS = SCOUT_MIN_HITS;
