@@ -426,6 +426,71 @@ async function winners(limit) {
  * dahinter; ueber buyFromSwap pruefen wir, ob er den Coin auch wirklich
  * bekommen hat und nicht abgegeben.
  */
+/**
+ * Wer ist gerade in diesen Coin gegangen?
+ *
+ * Der Zusammenlauf war immer das staerkste Signal und hat trotzdem nie
+ * gefeuert, weil er drei Wallets AUS DER EIGENEN LISTE verlangte. Bei
+ * fuenf beobachteten Adressen ist das Lotterie.
+ *
+ * Also andersherum fragen: nicht "treffen sich zufaellig drei
+ * Bekannte?", sondern "wer ist in der letzten halben Stunde sonst noch
+ * rein, und meint er es ernst?". Aus "einer hat gekauft" wird damit
+ * "sieben Leute mit echtem Einsatz in dreissig Minuten" - und das ist
+ * eine ganz andere Aussage.
+ *
+ * Wichtig ist die Unterscheidung, die weiter unten getroffen wird:
+ * dreissig Mini-Kaeufe von Centbetrag-Bots sind KEIN Interesse. Sie
+ * sehen in jeder Kaeuferzahl aus wie Nachfrage und sind das Gegenteil.
+ */
+const CROWD_ERNST_SOL = 0.25;
+
+async function recentBuyersOf(mint, minutes) {
+  const key = process.env.HELIUS_API_KEY;
+  if (!key) return { keyMissing: true, ernsthaft: 0, streuer: 0, summeSol: 0, wallets: [] };
+
+  const seit = Math.floor(Date.now() / 1000 - minutes * 60);
+  const url =
+    HELIUS + "/v0/addresses/" + mint + "/transactions?api-key=" + encodeURIComponent(key) +
+    "&type=SWAP&sort-order=desc&limit=100&gte-time=" + seit;
+
+  const txs = await cached("crowd:" + mint + ":" + minutes, 5 * 60 * 1000, async () => {
+    const data = await getJson(url, { source: "helius", timeoutMs: 9000, retries: 0 });
+    return Array.isArray(data) ? data : [];
+  });
+
+  // Pro Wallet nur den ersten Kauf zaehlen. Wer zehnmal nachlegt, ist
+  // eine Meinung, nicht zehn.
+  const proWallet = new Map();
+  for (const tx of txs) {
+    const wallet = tx && tx.feePayer;
+    if (!wallet) continue;
+    const move = buyFromSwap(tx, wallet);
+    if (!move || move.side !== "kauf" || move.mint !== mint) continue;
+    const bisher = proWallet.get(wallet) || 0;
+    proWallet.set(wallet, bisher + (move.solAmount || 0));
+  }
+
+  const eintraege = Array.from(proWallet.entries()).map(([wallet, sol]) => ({ wallet, sol }));
+  const ernst = eintraege.filter((e) => e.sol >= CROWD_ERNST_SOL);
+  const summe = eintraege.reduce((a, e) => a + e.sol, 0);
+
+  return {
+    keyMissing: false,
+    kaeufer: eintraege.length,
+    ernsthaft: ernst.length,
+    streuer: eintraege.length - ernst.length,
+    summeSol: Math.round(summe * 100) / 100,
+    // Die groessten zuerst - damit man in der App sieht, WER da
+    // hineingeht, und nicht nur wie viele.
+    wallets: ernst.sort((a, b) => b.sol - a.sol).slice(0, 12)
+      .map((e) => ({ wallet: e.wallet, sol: Math.round(e.sol * 1000) / 1000 })),
+  };
+}
+
+module.exports.recentBuyersOf = recentBuyersOf;
+module.exports.CROWD_ERNST_SOL = CROWD_ERNST_SOL;
+
 const ERSTE_RAENGE_BOTS = 15;
 
 async function earlyBuyers(mint, howMany, opts) {
