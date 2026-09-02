@@ -273,6 +273,16 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
 .numin{width:48px;padding:4px 7px;border-radius:7px;border:1px solid var(--border);background:rgba(255,255,255,.03);
   color:var(--tx);font-family:var(--mono);font-size:12px;outline:none;text-align:center}
 .numin.wide{width:72px}
+.numin.sel{width:auto;min-width:96px;text-align:left;cursor:pointer}
+.autobar{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:0 2px 10px;font-size:11.5px;color:var(--mu2)}
+#s-auto-info{font-family:var(--mono);font-size:11.5px;color:var(--mu)}
+#s-auto-info b{color:var(--grn)}
+.lnk{background:none;border:0;color:var(--mu2);font-family:inherit;font-size:11.5px;cursor:pointer;
+  text-decoration:underline;text-underline-offset:3px;padding:0}
+.lnk:hover{color:var(--tx)}
+.hand{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:2px 2px 14px;
+  border-top:1px solid var(--border);margin-bottom:6px}
+.numin::placeholder{color:var(--mu2);font-size:11px}
 .numin:focus{border-color:rgba(20,241,149,.4)}
 .cl.alarm{border-color:var(--grn);box-shadow:0 0 0 1px rgba(20,241,149,.25)}
 .pulse{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--mu2);font-family:var(--mono)}
@@ -461,17 +471,21 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
       <button class="btn btn-g btn-sm" id="s-addbtn">Verfolgen</button>
       <button class="btn btn-p btn-sm" id="s-scout">Kundschafter suchen</button>
       <div class="hspace" style="flex:1"></div>
-      <label class="autolabel">Alarm ab <input class="numin" id="s-min" type="number" min="2" max="6" value="2"> Wallets</label>
-      <label class="autolabel">max <input class="numin wide" id="s-mcap" type="number" min="0" step="5000" value="0"> $ MCap</label>
       <label class="autolabel"><input type="checkbox" id="s-buys" checked> nur Käufe</label>
       <label class="autolabel"><input type="checkbox" id="s-notify"> Benachrichtigung</label>
-      <label class="autolabel"><input type="checkbox" id="s-big" checked> nur ab 0,5 SOL</label>
       <label class="autolabel"><input type="checkbox" id="s-auto"> alle 15 s</label>
       <button class="btn btn-g btn-sm" id="s-test">Test</button>
       <button class="btn btn-g btn-sm" id="s-reload">Jetzt prüfen</button>
     </div>
     <div id="s-wallets" class="wal"></div>
-    <div style="padding:0 2px 10px"><span class="pulse" id="s-pulse"></span></div>
+    <div class="autobar"><span class="pulse" id="s-pulse"></span><span id="s-auto-info"></span><button class="lnk" id="s-hand">Feineinstellung</button></div>
+    <div id="s-manual" class="hand" hidden>
+      <label class="autolabel">Melden ab Relevanz <input class="numin" id="s-strict" type="number" min="0" max="100"></label>
+      <label class="autolabel">MCap <input class="numin wide" id="s-mcmin" type="number" min="0" step="1000" placeholder="von"> – <input class="numin wide" id="s-mcmax" type="number" min="0" step="1000" placeholder="bis"></label>
+      <label class="autolabel">Zusammenlauf ab <input class="numin" id="s-min" type="number" min="2" max="6" value="2"> Wallets</label>
+      <input type="hidden" id="s-mcap" value="0">
+      <label class="autolabel"><input type="checkbox" id="s-autoschwelle" checked> Schwelle automatisch</label>
+    </div>
     <div id="s-out"></div>
     <p class="hint" style="margin-top:20px"><b style="color:var(--mu)">Warum Wallets und nicht X-Accounts:</b> Ein Trader postet <i>nachdem</i> er gekauft hat — oder erst, wenn er Abnehmer sucht. Die Wallet zeigt den Kauf in dem Moment, in dem er passiert, in voller Höhe, ohne Erzählung. Das ist früher als jeder Tweet und lässt sich nicht fälschen.<br><br><b style="color:var(--yel)">Und der ehrliche Teil:</b> Wer kopiert, ist immer hinten. Er ist vor dir drin, und wenn er verkauft, erfährst du es <i>danach</i>. Manche Wallets sehen nur deshalb genial aus, weil sie noch früher informiert waren als der, den du beobachtest. Jeder Kauf hier bekommt deshalb sofort unsere eigene Prüfung daneben — er kauft nicht für dich.</p>
   </section>
@@ -920,6 +934,7 @@ function moveRow(m){
   var kauf = m.side === "kauf";
   var c = m.coin || {};
   var meta = [];
+  if(m.relevance != null) meta.push("Relevanz " + m.relevance);
   if(m.score != null) meta.push("Score " + m.score);
   if(c.organicShareH1 != null) meta.push(Math.round(c.organicShareH1*100) + "% echt");
   if(c.marketCap) meta.push(money(c.marketCap));
@@ -934,6 +949,7 @@ function moveRow(m){
       '</div>'+
       '<div class="who">'+esc(nameOf(m.wallet))+' · '+(kauf?"gekauft":"verkauft")+' '+esc(whenTxt(m.timestamp))+
         (m.source?' · '+esc(String(m.source).toLowerCase()):'')+'</div>'+
+      ((m.why||[]).length?'<div class="who" style="color:var(--grn);margin-top:4px">'+esc(m.why.join(" · "))+'</div>':'')+
       (flags?'<div class="who" style="color:var(--yel);margin-top:4px">⚠ '+esc(flags)+'</div>':'')+
     '</div>'+
     '<div><div class="amt" style="color:'+(kauf?"var(--grn)":"var(--red)")+'">'+
@@ -1354,30 +1370,191 @@ function sPulse(){
 }
 
 /** Jede Transaktion nur einmal melden - Signaturen sind eindeutig. */
+/* ---------- Die Selbsteinstellung: lernen statt einstellen ---------- */
+
+/**
+ * Zwei Mechanismen, die zusammenarbeiten.
+ *
+ * DIE RATE. Ein Alarmsystem ist nur so gut wie die Zahl der Alarme, die
+ * man noch liest. Die App zielt auf etwa vier pro Stunde. Kommen mehr,
+ * zieht sie die Schwelle an; kommt tagelang nichts, macht sie auf. Das
+ * funktioniert ab der ersten Minute und braucht keine Historie.
+ *
+ * DAS ERGEBNIS. Jeder Alarm wird mit Preis und Zeitstempel gemerkt. Rund
+ * 45 Minuten spaeter schaut die App nach, was aus dem Coin geworden ist,
+ * und legt das Ergebnis zur Relevanz. Sobald genug Faelle beisammen sind,
+ * verschiebt sie die Schwelle dorthin, wo die Treffer tatsaechlich lagen
+ * - nicht dorthin, wo ich sie geraten habe.
+ *
+ * Alles bleibt im Browser. Es ist DEINE Lernkurve, nicht die von
+ * irgendwem, und sie kostet nichts.
+ */
+var LEARN = { alerts: [], schwelle: 45, stand: "" };
+try {
+  var roh = localStorage.getItem("sonar_learn");
+  if(roh) LEARN = Object.assign(LEARN, JSON.parse(roh) || {});
+} catch(e){}
+
+function learnSave(){
+  try {
+    // Nur die letzten 300 Faelle behalten - aelteres sagt ueber den
+    // heutigen Markt ohnehin nichts mehr.
+    LEARN.alerts = LEARN.alerts.slice(-300);
+    localStorage.setItem("sonar_learn", JSON.stringify(LEARN));
+  } catch(e){}
+}
+
+/** Wie viele Alarme gab es in den letzten zwei Stunden? */
+function alarmRate(){
+  var grenze = Date.now() - 2*3600*1000;
+  var n = LEARN.alerts.filter(function(a){ return a.ts > grenze; }).length;
+  return n / 2;
+}
+
+/**
+ * Aus den ausgewerteten Faellen die Schwelle ableiten.
+ * Gibt null zurueck, solange es zu wenig Daten gibt - dann bleibt es
+ * ehrlich bei der Ratenregelung.
+ */
+function gelernteSchwelle(){
+  var fertig = LEARN.alerts.filter(function(a){ return a.ergebnis != null; });
+  if(fertig.length < 15) return null;
+  // In Zehnerbaendern schauen, ab wo es sich gelohnt hat.
+  var beste = null;
+  for(var band = 30; band <= 80; band += 10){
+    var drin = fertig.filter(function(a){ return a.relevance >= band; });
+    if(drin.length < 6) continue;
+    var treffer = drin.filter(function(a){ return a.ergebnis >= 20; }).length;
+    var quote = treffer / drin.length;
+    if(quote >= 0.3 && beste === null) beste = band;
+  }
+  return beste;
+}
+
+/** Die automatische Schwelle - Rate und Erfahrung zusammen. */
+function autoSchwelle(){
+  var jetzt = LEARN.schwelle || 45;
+  var rate = alarmRate();
+  // Ratenregelung: Ziel etwa vier pro Stunde.
+  if(rate > 8) jetzt += 5;
+  else if(rate > 5) jetzt += 2;
+  else if(rate < 1.5) jetzt -= 3;
+  else if(rate < 3) jetzt -= 1;
+
+  var gelernt = gelernteSchwelle();
+  if(gelernt !== null) jetzt = Math.round(jetzt * 0.4 + gelernt * 0.6);
+
+  jetzt = Math.max(25, Math.min(88, jetzt));
+  if(jetzt !== LEARN.schwelle){ LEARN.schwelle = jetzt; learnSave(); }
+  return jetzt;
+}
+
+/** Einen ausgeloesten Alarm zum spaeteren Nachschauen merken. */
+function learnRecord(m){
+  var preis = m.coin && m.coin.priceUsd;
+  LEARN.alerts.push({
+    mint: m.mint, symbol: m.symbol || "?", ts: Date.now(),
+    relevance: m.relevance || 0, preis: preis || null,
+    mcap: (m.coin && m.coin.marketCap) || null, ergebnis: null
+  });
+  learnSave();
+}
+
+/**
+ * Nachschauen, was aus den gemeldeten Coins geworden ist.
+ * Laeuft alle paar Minuten mit, kostet nur eine Jupiter-Abfrage.
+ */
+function learnFollowUp(){
+  var reif = LEARN.alerts.filter(function(a){
+    return a.ergebnis == null && a.preis && (Date.now() - a.ts) > 40*60*1000 && (Date.now() - a.ts) < 24*3600*1000;
+  }).slice(0, 25);
+  if(!reif.length){ renderAutoInfo(); return; }
+
+  apiFetch("/api/quote?mints=" + encodeURIComponent(reif.map(function(a){ return a.mint; }).join(",")))
+    .then(function(j){
+      if(!j.ok) return;
+      var jetzt = {};
+      (j.quotes||[]).forEach(function(q){ jetzt[q.mint] = q.priceUsd; });
+      reif.forEach(function(a){
+        var p = jetzt[a.mint];
+        // Kein Kurs mehr = der Coin ist tot. Das IST das Ergebnis.
+        a.ergebnis = (p && a.preis) ? Math.round(((p - a.preis) / a.preis) * 100) : -100;
+      });
+      learnSave();
+      renderAutoInfo();
+    })
+    .catch(function(){});
+}
+
+function renderAutoInfo(){
+  var box = el("s-auto-info");
+  if(!box) return;
+  var fertig = LEARN.alerts.filter(function(a){ return a.ergebnis != null; });
+  var treffer = fertig.filter(function(a){ return a.ergebnis >= 20; }).length;
+  var teile = ["meldet ab <b>Relevanz " + (LEARN.schwelle || 45) + "</b>"];
+  teile.push(Math.round(alarmRate()*10)/10 + "/Std");
+  if(fertig.length >= 5){
+    teile.push("aus <b>" + fertig.length + "</b> Alarmen gelernt · " + treffer + " liefen +20%");
+  } else if(LEARN.alerts.length){
+    teile.push(LEARN.alerts.length + " Alarme gemerkt, Auswertung ab 15");
+  } else {
+    teile.push("noch nichts gelernt");
+  }
+  box.innerHTML = teile.join(" · ");
+}
+
+/**
+ * Was ist eine Meldung wert?
+ *
+ * Nicht der SOL-Betrag - der sagt fuer sich genommen nichts. 0,3 SOL in
+ * einen 5k-Coin sind ein Prozent des ganzen Dings, dieselben 0,3 SOL in
+ * einen 5M-Coin sind nichts. Der Server rechnet daraus eine Relevanz von
+ * 0 bis 100 und liefert die Begruendung gleich mit; hier wird nur noch
+ * die Schwelle und das Marktwert-Fenster angewendet.
+ */
+function relevanzFilter(){
+  var autoAn = !el("s-autoschwelle") || el("s-autoschwelle").checked;
+  var min = autoAn ? autoSchwelle() : (parseInt(el("s-strict").value, 10) || 0);
+  if(autoAn && el("s-strict")) el("s-strict").value = min;
+  return {
+    min: min,
+    mcMin: Math.max(0, parseInt(el("s-mcmin").value, 10) || 0),
+    mcMax: Math.max(0, parseInt(el("s-mcmax").value, 10) || 0)
+  };
+}
+
+function istRelevant(m, f){
+  if((m.relevance || 0) < f.min) return false;
+  var mc = m.coin && m.coin.marketCap;
+  if(f.mcMin > 0 && (mc == null || mc < f.mcMin)) return false;
+  if(f.mcMax > 0 && (mc == null || mc > f.mcMax)) return false;
+  return true;
+}
+
 function sNotify(moves){
   if(!notifyWanted()) return;
-  var nurGross = el("s-big") && el("s-big").checked;
+  var f = relevanzFilter();
   moves.filter(function(m){
     if(sKnown[m.signature]) return false;
-    // Ohne diesen Filter meldet jeder Streuer im Minutentakt. Mit ihm
-    // kommt nur, wer wirklich Geld einsetzt.
-    if(nurGross && (m.solAmount || 0) < 0.5) return false;
-    return true;
+    return istRelevant(m, f);
   }).slice(0,3).forEach(function(m){
     sKnown[m.signature] = Date.now();
+    learnRecord(m);
     var c = m.coin || {};
     popAlert({
       kind: "kauf",
-      titel: "👁 " + nameOf(m.wallet) + " hat gekauft",
+      titel: "👁 " + nameOf(m.wallet) + " · Relevanz " + (m.relevance || 0),
       symbol: m.symbol || "?",
       name: c.name || "",
       mint: m.mint,
       plain: (m.solAmount ? m.solAmount + " SOL" : "") + (m.score != null ? " · Score " + m.score : ""),
       info: (m.solAmount ? "<b>" + m.solAmount + " SOL</b> eingesetzt" : "Einsatz unbekannt") +
+            (m.sharePct ? " = <b>" + m.sharePct + "%</b> des Coins" : "") +
             (m.score != null ? " · Unser Score <b>" + m.score + "</b>" : "") +
             (c.marketCap ? "<br>MCap " + money(c.marketCap) : "") +
             (c.organicShareH1 != null ? " · " + Math.round(c.organicShareH1*100) + "% echtes Volumen" : "") +
             (c.ageMinutes != null ? " · " + age(c.ageMinutes) + " alt" : "") +
+            ((m.why||[]).length ? '<br><span style="color:var(--grn)">' + esc(m.why.join(" · ")) + '</span>' : "") +
             ((m.topFlags||[]).length ? '<br><span style="color:var(--yel)">⚠ ' + esc(m.topFlags.map(function(f){return f.title;}).slice(0,2).join(" · ")) + '</span>' : "")
     });
   });
@@ -1419,6 +1596,17 @@ el("s-auto").addEventListener("change", function(){
   sAutoTimer = setInterval(function(){ sLoad().length ? loadSpuren() : loadScouts(); }, 600000);
 });
 
+el("s-hand").addEventListener("click", function(){
+  var box = el("s-manual");
+  box.hidden = !box.hidden;
+  this.textContent = box.hidden ? "Feineinstellung" : "Feineinstellung ausblenden";
+});
+
+// Alle drei Minuten nachschauen, was aus den gemeldeten Coins wurde.
+renderAutoInfo();
+setInterval(learnFollowUp, 3*60*1000);
+setTimeout(learnFollowUp, 8000);
+
 el("s-test").addEventListener("click", function(){
   // Das Fenster kommt IMMER - unabhaengig davon, ob das Betriebssystem
   // die Systembenachrichtigung durchlaesst. Die wird nur zusaetzlich
@@ -1441,7 +1629,8 @@ function zeigeTest(){
           ".<br>Die Knöpfe unten funktionieren — probier <b>Adresse kopieren</b>."
   });
 }
-["s-min","s-mcap"].forEach(function(id){
+["s-min","s-mcap","s-strict","s-mcmin","s-mcmax"].forEach(function(id){
+  if(!el(id)) return;
   el(id).addEventListener("change", function(){
     try { localStorage.setItem("sonar_opt_" + id, el(id).value); } catch(e){}
   });
@@ -1732,7 +1921,7 @@ el("w-auto").addEventListener("change", function(){
  * Wache. Die Haken werden deshalb gespeichert und beim Start wieder
  * gesetzt - inklusive der Timer, die daran haengen.
  */
-["w-notify", "s-notify", "w-auto", "s-auto", "s-buys", "s-big", "j-auto"].forEach(function(id){
+["w-notify", "s-notify", "w-auto", "s-auto", "s-buys", "s-autoschwelle", "j-auto"].forEach(function(id){
   var box = el(id);
   if(!box) return;
   var key = "sonar_opt_" + id;
