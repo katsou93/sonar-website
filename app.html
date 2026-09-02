@@ -272,6 +272,10 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
 .plan{margin-top:8px;padding:7px 9px;border-radius:7px;background:rgba(20,241,149,.07);
   border:1px solid rgba(20,241,149,.22);font-size:12px;line-height:1.5}
 .plan b{color:var(--grn)}
+.nach{margin-top:8px;padding:7px 9px;border-radius:7px;background:rgba(255,255,255,.035);
+  border:1px solid var(--border);font-size:12px;line-height:1.6}
+.nach>div+div{margin-top:3px}
+.alert.verrissen{opacity:.5;border-color:rgba(255,90,90,.45)}
 .scout.streuer{opacity:.62}
 .scout.schwach{opacity:.82}
 .scout.durchgefallen{opacity:.45;border-color:rgba(255,90,90,.3)}
@@ -1508,6 +1512,15 @@ function popAlert(o){
     '</div>';
 
   card.querySelector(".ax").addEventListener("click", function(){ card.remove(); });
+  if(o.nachschaerfen){
+    var nach = document.createElement("div");
+    nach.className = "nach";
+    nach.setAttribute("data-nach", "1");
+    nach.innerHTML = '<div data-scanline><span class="mu2">volle Prüfung läuft …</span></div>'+
+                     '<div data-crowdline><span class="mu2">schaue, wer sonst noch rein ist …</span></div>';
+    card.querySelector(".aadr").before(nach);
+    alarmNachschaerfen(card, o.nachschaerfen);
+  }
   card.querySelector("[data-copy]").addEventListener("click", function(){ copyText(o.mint, this); });
   card.querySelector("[data-scan]").addEventListener("click", function(){
     document.querySelector('.tab[data-view="scanner"]').click();
@@ -1938,6 +1951,84 @@ function walletBilanzEigen(wallet){
  * Fenster - und deshalb kommt hier die zweite Meldung, wenn sie
  * erreicht ist.
  */
+/**
+ * Nachschaerfen, nachdem der Alarm schon steht.
+ *
+ * Zwei Dinge fehlten genau dort, wo du entscheidest:
+ *
+ *   Die VOLLE Prüfung. In der Liste läuft nur die Vorprüfung aus
+ *   Marktdaten — für dutzende Coins gleichzeitig geht nichts anderes.
+ *   Rugcheck, die echte Holder-Verteilung und der Anteil des Erstellers
+ *   liefen erst, wenn du auf "Prüfen" geklickt hast. Der Moment, in dem
+ *   du entscheidest, ist aber der Alarm, nicht der Klick danach.
+ *
+ *   Und die Frage, ob du allein bist. "Einer hat gekauft" ist schwach.
+ *   "Sieben Leute mit echtem Einsatz in dreißig Minuten" ist etwas
+ *   ganz anderes — und es ist derselbe Coin.
+ *
+ * Beides kostet je einen Aufruf und läuft deshalb nur für Alarme, nicht
+ * für die ganze Liste. Das Fenster steht sofort und ergänzt sich eine
+ * Sekunde später selbst.
+ */
+function alarmNachschaerfen(card, m){
+  var box = card.querySelector("[data-nach]");
+  if(!box) return;
+
+  // 1. Die volle Prüfung.
+  apiFetch("/api/scan?address=" + encodeURIComponent(m.mint))
+    .then(function(j){
+      if(!j || !j.ok || j.score == null) return;
+      var vor = m.score;
+      var farbe = j.score >= 70 ? "var(--grn)" : j.score >= 50 ? "var(--yel)" : "var(--red)";
+      var zeile = 'Volle Prüfung: <b style="color:'+farbe+'">'+j.score+'</b>';
+      if(vor != null && Math.abs(j.score - vor) >= 10){
+        // Die ehrliche Fassung: sagen, dass sich das Bild geändert hat,
+        // statt die neue Zahl kommentarlos hinzustellen.
+        zeile += ' <span class="mu2">(Vorprüfung sagte '+vor+' — die volle Prüfung weiß mehr)</span>';
+      }
+      var rot = (j.flags||[]).filter(function(f){ return f.level === "red"; }).slice(0,2);
+      if(rot.length){
+        zeile += '<br><span style="color:var(--red)">⚠ '+esc(rot.map(function(f){return f.title;}).join(" · "))+'</span>';
+      }
+      var el2 = box.querySelector("[data-scanline]");
+      if(el2) el2.innerHTML = zeile;
+      // Wenn die volle Prüfung den Coin verreißt, wird die Karte
+      // entwertet statt still gelassen.
+      if(j.score < 35) card.classList.add("verrissen");
+    })
+    .catch(function(){});
+
+  // 2. Wer geht sonst noch rein?
+  apiFetch("/api/crowd?mint=" + encodeURIComponent(m.mint) + "&minutes=30")
+    .then(function(j){
+      if(!j || !j.ok) return;
+      var el3 = box.querySelector("[data-crowdline]");
+      if(!el3) return;
+      if(!j.kaeufer){ el3.innerHTML = '<span class="mu2">Sonst ist in 30 Minuten niemand rein.</span>'; return; }
+
+      // Aus dem Bestand bekannte Gesichter zuerst — das ist der
+      // eigentliche Zusammenlauf.
+      var bekannt = (j.wallets||[]).filter(function(w){
+        var r = ROSTER.wallets[w.wallet];
+        return r && r.status === "aktiv";
+      });
+
+      var txt;
+      if(bekannt.length >= 2){
+        txt = '<b style="color:var(--grn)">'+bekannt.length+' aus deinem Bestand</b> sind in den letzten 30 Min rein';
+      } else if(j.ernsthaft >= 5){
+        txt = '<b style="color:var(--grn)">'+j.ernsthaft+' Leute mit echtem Einsatz</b> in 30 Min · zusammen '+j.summeSol+' SOL';
+      } else if(j.ernsthaft >= 2){
+        txt = '<b>'+j.ernsthaft+' Leute mit echtem Einsatz</b> in 30 Min · zusammen '+j.summeSol+' SOL';
+      } else {
+        txt = '<span style="color:var(--yel)">Nur '+j.ernsthaft+' ernsthafte Käufe</span> bei '+j.kaeufer+' Adressen';
+        if(j.streuer >= 8) txt += ' <span class="mu2">— der Rest sind Centbeträge, also Bots</span>';
+      }
+      el3.innerHTML = txt;
+    })
+    .catch(function(){});
+}
+
 function zielAlarm(a, art){
   var texte = {
     ziel:      { titel: "🎯 Ziel erreicht — verkaufen",
@@ -2164,7 +2255,8 @@ function sNotify(moves){
             (c.ageMinutes != null ? " · " + age(c.ageMinutes) + " alt" : "") +
             ((m.why||[]).length ? '<br><span style="color:var(--grn)">' + esc(m.why.join(" · ")) + '</span>' : "") +
             ((m.topFlags||[]).length ? '<br><span style="color:var(--yel)">⚠ ' + esc(m.topFlags.map(function(f){return f.title;}).slice(0,2).join(" · ")) + '</span>' : "") +
-            planTxt(m)
+            planTxt(m),
+      nachschaerfen: m
     });
   });
 
