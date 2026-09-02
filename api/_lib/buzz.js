@@ -62,7 +62,13 @@ const NOISE = new Set([
 /** Titel aus einem RSS-Dokument ziehen - inklusive CDATA. */
 function rssTitles(xml) {
   const out = [];
-  const items = String(xml || "").split(/<item[\s>]/i).slice(1);
+  // RSS nutzt <item>, Atom nutzt <entry>. Reddit liefert Atom - ohne
+  // diese Zeile haette der Rueckfallweg still nichts zurueckgegeben und
+  // die Quelle waere als "leer" statt als "kaputt" erschienen.
+  const roh = String(xml || "");
+  const items = /<item[\s>]/i.test(roh)
+    ? roh.split(/<item[\s>]/i).slice(1)
+    : roh.split(/<entry[\s>]/i).slice(1);
   for (const chunk of items) {
     const hit = /<title>([\s\S]*?)<\/title>/i.exec(chunk);
     if (!hit) continue;
@@ -129,36 +135,68 @@ const SOURCES = [
     key: "reddit",
     label: "Reddit im Aufstieg",
     load: async () => {
-      const listen = [
-        "https://www.reddit.com/r/all/rising.json?limit=40",
-        "https://www.reddit.com/r/memes/hot.json?limit=25",
-      ];
+      // Reddit weist Anfragen ohne erkennbaren User-Agent ab - live
+      // gemessen: von Vercel aus kam nichts zurueck, bis dieser Kopf
+      // gesetzt war. Reddit verlangt ausserdem ausdruecklich einen
+      // sprechenden Namen statt eines nachgeahmten Browsers.
+      const kopf = { "user-agent": "sonar-terminal/1.0 (meme coin research; contact via github katsou93/sonar-website)" };
       const out = [];
       const gesehen = new Set();
       let eineGing = false;
-      for (const url of listen) {
+
+      const nimm = (titel, punkte, alterSek) => {
+        if (!titel || gesehen.has(titel)) return;
+        gesehen.add(titel);
+        out.push({
+          title: String(titel),
+          // Aufwaerts-Geschwindigkeit statt absoluter Punktzahl: ein
+          // Beitrag mit 800 Punkten nach zwanzig Minuten sagt mehr als
+          // einer mit 40.000 nach zwei Tagen.
+          traffic: Math.round((punkte || 0) / Math.max(1, (alterSek || 3600) / 3600)),
+        });
+      };
+
+      // Weg 1: die JSON-Schnittstelle. Liefert Punkte und Alter mit,
+      // also die bessere Aussage - wenn sie durchkommt.
+      for (const url of [
+        "https://www.reddit.com/r/all/rising.json?limit=40",
+        "https://www.reddit.com/r/memes/hot.json?limit=25",
+      ]) {
         try {
-          const data = await getJson(url, { source: "reddit", timeoutMs: 5000, retries: 0 });
+          const data = await getJson(url, { source: "reddit", timeoutMs: 5000, retries: 0, headers: kopf });
           const kinder = (data && data.data && data.data.children) || [];
           for (const k of kinder) {
             const d = k && k.data;
             if (!d || !d.title || d.over_18) continue;
-            if (gesehen.has(d.id)) continue;
-            gesehen.add(d.id);
-            out.push({
-              title: String(d.title),
-              // Aufwaerts-Geschwindigkeit statt absoluter Punktzahl: ein
-              // Beitrag mit 800 Punkten nach zwanzig Minuten sagt mehr
-              // als einer mit 40.000 nach zwei Tagen.
-              traffic: Math.round((d.score || 0) / Math.max(1, (Date.now()/1000 - (d.created_utc||0)) / 3600)),
-            });
+            nimm(d.title, d.score, Date.now()/1000 - (d.created_utc || 0));
           }
-          eineGing = true;
+          if (kinder.length) eineGing = true;
         } catch (err) {
-          // Eine Liste kann fehlschlagen, die andere trotzdem liefern.
+          // Weiter zum naechsten Weg.
         }
       }
-      // Wenn KEINE Liste durchkam, ist das ein Fehler und kein leeres
+
+      // Weg 2: derselbe Inhalt als RSS. Ohne Punktzahl, dafuer
+      // deutlich seltener blockiert. Lieber die Titel ohne Gewichtung
+      // als gar nichts - fuer die Themenerkennung zaehlt das Wort,
+      // nicht die Punktzahl.
+      if (!eineGing) {
+        for (const url of [
+          "https://www.reddit.com/r/all/rising/.rss?limit=40",
+          "https://www.reddit.com/r/memes/hot/.rss?limit=25",
+        ]) {
+          try {
+            const xml = await getText(url, { source: "reddit", timeoutMs: 5000, headers: kopf });
+            const eintraege = rssTitles(xml);
+            eintraege.forEach((e) => nimm(e.title, 60, 3600));
+            if (eintraege.length) eineGing = true;
+          } catch (err) {
+            // Auch das kann fehlschlagen.
+          }
+        }
+      }
+
+      // Wenn KEIN Weg durchkam, ist das ein Fehler und kein leeres
       // Ergebnis. Sonst steht in der Quellenanzeige "ok" neben einer
       // Quelle, die gar nichts liefert - und man sucht den Fehler an
       // der falschen Stelle.
