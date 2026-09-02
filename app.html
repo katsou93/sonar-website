@@ -1765,7 +1765,7 @@ function rosterFaellig(){
     .map(function(r){ return r.wallet; });
 }
 
-var LEARN = { alerts: [], schwelle: 45, stand: "" };
+var LEARN = { alerts: [], kontrolle: [], schwelle: 45, stand: "" };
 try {
   var roh = localStorage.getItem("sonar_learn");
   if(roh) LEARN = Object.assign(LEARN, JSON.parse(roh) || {});
@@ -1776,6 +1776,7 @@ function learnSave(){
     // Nur die letzten 300 Faelle behalten - aelteres sagt ueber den
     // heutigen Markt ohnehin nichts mehr.
     LEARN.alerts = LEARN.alerts.slice(-300);
+    LEARN.kontrolle = (LEARN.kontrolle || []).slice(-300);
     localStorage.setItem("sonar_learn", JSON.stringify(LEARN));
   } catch(e){}
 }
@@ -1847,6 +1848,47 @@ function autoSchwelle(){
 var ZIEL_X = 5;
 var ZIEL_STUNDEN = 48;
 
+/**
+ * Die Kontrollgruppe. Ohne sie wissen wir gar nichts.
+ *
+ * Die App sagt dir bald: "3 von 20 Alarmen erreichten 5×". Das klingt
+ * nach etwas. Es ist aber ohne Vergleich wertlos - wenn an einem guten
+ * Tag ohnehin jeder siebte frische Coin verfuenffacht, dann hat dieses
+ * Werkzeug nichts geleistet ausser den Markt nachzuzeichnen. Und es
+ * haette dir dabei das Gefuehl verkauft, etwas zu koennen.
+ *
+ * Deshalb merkt sich die App bei jedem Durchlauf auch ein paar Coins,
+ * die KEINEN Alarm ausgeloest haben, und verfolgt sie exakt gleich.
+ * Erst der Vergleich der beiden Quoten ist eine Aussage:
+ *
+ *     deine Alarme 18%  ·  Zufallsauswahl 6%    -> es funktioniert
+ *     deine Alarme 7%   ·  Zufallsauswahl 8%    -> es funktioniert nicht
+ *
+ * Der zweite Fall waere unangenehm. Aber ihn nach einer Woche zu
+ * erfahren ist unendlich viel besser, als ihn nie zu erfahren.
+ */
+function kontrollAufnehmen(moves, gemeldet){
+  var gemeldetSet = {};
+  (gemeldet||[]).forEach(function(m){ gemeldetSet[m.mint] = true; });
+  var kandidaten = (moves||[]).filter(function(m){
+    return m.side === "kauf" && m.coin && m.coin.priceUsd && !gemeldetSet[m.mint];
+  });
+  if(!kandidaten.length) return;
+
+  // Zwei pro Durchlauf reichen. Sie kosten nichts extra - die
+  // Kursabfrage laeuft ohnehin.
+  for(var i = 0; i < Math.min(2, kandidaten.length); i++){
+    var m = kandidaten[Math.floor(Math.random() * kandidaten.length)];
+    if(LEARN.kontrolle.some(function(k){ return k.mint === m.mint; })) continue;
+    LEARN.kontrolle.push({
+      mint: m.mint, symbol: m.symbol || "?", ts: Date.now(),
+      preis: m.coin.priceUsd, maxX: 1, ergebnis: null
+    });
+  }
+  LEARN.kontrolle = LEARN.kontrolle.slice(-300);
+  learnSave();
+}
+
 function learnRecord(m){
   var preis = m.coin && m.coin.priceUsd;
   LEARN.alerts.push({
@@ -1887,6 +1929,41 @@ function walletBilanzEigen(wallet){
  * Nachschauen, was aus den gemeldeten Coins geworden ist.
  * Laeuft alle paar Minuten mit, kostet nur eine Jupiter-Abfrage.
  */
+/**
+ * Die Meldung zum Ausstieg.
+ *
+ * Der Einstieg war nie das Problem. Man kauft fuer fuenf Euro, der Coin
+ * laeuft, und dann sitzt man davor und denkt sich, dass er ja noch
+ * weiter laufen koennte. Deshalb steht die Zahl schon beim Kauf im
+ * Fenster - und deshalb kommt hier die zweite Meldung, wenn sie
+ * erreicht ist.
+ */
+function zielAlarm(a, art){
+  var texte = {
+    ziel:      { titel: "🎯 Ziel erreicht — verkaufen",
+                 info: "<b>" + a.maxX + "×</b> seit der Meldung. Aus 5 € sind rechnerisch <b>" +
+                       Math.round(5 * a.maxX) + " €</b> geworden.<br>" +
+                       "<span class=\"mu2\">Das ist der Moment, für den du gekauft hast. " +
+                       "Er wird nicht dadurch besser, dass du wartest.</span>" },
+    halbiert:  { titel: "📉 Die Hälfte weg",
+                 info: "Der Coin steht bei rund der Hälfte deines Einstiegs.<br>" +
+                       "<span class=\"mu2\">Bei 5 € Einsatz sind das 2,50 € — verkraftbar. " +
+                       "Aber die Wette ist wahrscheinlich vorbei.</span>" },
+    tot:       { titel: "✝ Kein Kurs mehr",
+                 info: "Für diesen Coin liefert keine Börse mehr einen Preis.<br>" +
+                       "<span class=\"mu2\">Das passiert. Deshalb 5 € und nicht 50.</span>" }
+  };
+  var t = texte[art] || texte.ziel;
+  popAlert({
+    kind: art === "ziel" ? "cluster" : "kauf",
+    titel: t.titel,
+    symbol: a.symbol || "?",
+    mint: a.mint,
+    plain: t.titel + " · " + (a.symbol || "?"),
+    info: t.info
+  });
+}
+
 function learnFollowUp(){
   var jetztMs = Date.now();
   // Alles verfolgen, was noch offen ist und juenger als 48 Stunden -
@@ -1896,9 +1973,15 @@ function learnFollowUp(){
   var offen = LEARN.alerts.filter(function(a){
     return a.ergebnis == null && a.preis && (jetztMs - a.ts) < ZIEL_STUNDEN*3600*1000;
   }).slice(-30);
-  if(!offen.length){ renderAutoInfo(); return; }
+  // Die Kontrollcoins laufen im selben Aufruf mit - sie kosten nichts
+  // extra, und ohne sie ist die eigene Quote eine Zahl ohne Massstab.
+  var kOffen = (LEARN.kontrolle||[]).filter(function(a){
+    return a.ergebnis == null && a.preis && (jetztMs - a.ts) < ZIEL_STUNDEN*3600*1000;
+  }).slice(-20);
+  if(!offen.length && !kOffen.length){ renderAutoInfo(); return; }
 
-  apiFetch("/api/quote?mints=" + encodeURIComponent(offen.map(function(a){ return a.mint; }).join(",")))
+  var alleMints = offen.concat(kOffen).map(function(a){ return a.mint; });
+  apiFetch("/api/quote?mints=" + encodeURIComponent(alleMints.join(",")))
     .then(function(j){
       if(!j.ok) return;
       var kurse = {};
@@ -1913,10 +1996,41 @@ function learnFollowUp(){
         // Abschliessen, wenn das Ziel erreicht ist ODER die Frist um ist.
         // Kein Kurs mehr heisst: der Coin ist tot, und das IST das
         // Ergebnis - nicht "unbekannt".
+        if((a.maxX || 1) >= ZIEL_X){
+          a.ergebnis = "ziel";
+          // Und jetzt der Teil, der bisher gefehlt hat: dir Bescheid
+          // sagen. Kleine Positionen scheitern fast nie am Einstieg -
+          // sie scheitern daran, dass niemand den Ausstieg festgehalten
+          // hat und man dem Kurs beim Zurueckfallen zusieht.
+          if(!a.gemeldet){ a.gemeldet = true; zielAlarm(a, "ziel"); }
+        }
+        else if(!p && alter > 2*3600*1000){
+          a.ergebnis = "tot";
+          if(!a.gemeldet){ a.gemeldet = true; zielAlarm(a, "tot"); }
+        }
+        else if(alter > ZIEL_STUNDEN*3600*1000) a.ergebnis = "verfehlt";
+        else if(p && a.preis && (p / a.preis) <= 0.5 && !a.gewarnt){
+          // Die ehrliche Gegenrichtung. Die Haelfte weg heisst bei
+          // fuenf Euro Einsatz zwar nur zweifuenfzig - aber es heisst
+          // auch, dass die Wette vorbei ist.
+          a.gewarnt = true;
+          zielAlarm(a, "halbiert");
+        }
+      });
+      // Kontrollcoins: dieselbe Rechnung, aber ohne Alarm und ohne
+      // Meldung. Sie sollen nur zeigen, was ohne uns passiert waere.
+      kOffen.forEach(function(a){
+        var p = kurse[a.mint];
+        var alter = jetztMs - a.ts;
+        if(p && a.preis){
+          var x = p / a.preis;
+          if(x > (a.maxX || 1)) a.maxX = Math.round(x * 100) / 100;
+        }
         if((a.maxX || 1) >= ZIEL_X) a.ergebnis = "ziel";
         else if(!p && alter > 2*3600*1000) a.ergebnis = "tot";
         else if(alter > ZIEL_STUNDEN*3600*1000) a.ergebnis = "verfehlt";
       });
+
       learnSave();
       lernUeberWallets();
       renderAutoInfo();
@@ -1968,7 +2082,17 @@ function renderAutoInfo(){
   teile.push("<b>" + aktiv + "</b> geprüfte Wallets" + (abgelehnt ? " (" + abgelehnt + " aussortiert)" : ""));
 
   if(fertig.length >= 5){
-    teile.push("<b>" + treffer + "</b> von " + fertig.length + " erreichten " + ZIEL_X + "×");
+    var quote = Math.round((treffer / fertig.length) * 100);
+    teile.push("deine Alarme <b>" + quote + "%</b> (" + treffer + "/" + fertig.length + ") auf " + ZIEL_X + "×");
+    var kf = (LEARN.kontrolle||[]).filter(function(a){ return a.ergebnis != null; });
+    if(kf.length >= 5){
+      var kq = Math.round((kf.filter(function(a){ return a.ergebnis === "ziel"; }).length / kf.length) * 100);
+      var besser = quote > kq;
+      teile.push('<b style="color:' + (besser ? "var(--grn)" : "var(--red)") + '">Zufall ' + kq + '%</b>' +
+                 (besser ? "" : " — die Auswahl bringt gerade nichts"));
+    } else if(kf.length || (LEARN.kontrolle||[]).length){
+      teile.push('<span class="mu2">Vergleichsgruppe läuft (' + (LEARN.kontrolle||[]).length + ')</span>');
+    }
   } else if(LEARN.alerts.length){
     teile.push(LEARN.alerts.length + " Alarme laufen, Auswertung ab 15");
   } else {
@@ -2008,7 +2132,7 @@ function istRelevant(m, f){
 function sNotify(moves){
   if(!notifyWanted()) return;
   var f = relevanzFilter();
-  moves.filter(function(m){
+  var auswahl = moves.filter(function(m){
     if(sKnown[m.signature]) return false;
     // Von einer Wallet, die nachweislich verliert, will man keinen
     // Alarm - auch dann nicht, wenn dieser eine Kauf gut aussieht.
@@ -2019,7 +2143,9 @@ function sNotify(moves){
     var eigen = walletBilanzEigen(m.wallet);
     if(eigen && eigen.n >= 8 && eigen.quote < 15) return false;
     return istRelevant(m, f);
-  }).slice(0,3).forEach(function(m){
+  }).slice(0,3);
+  var gemeldete = auswahl;
+  auswahl.forEach(function(m){
     sKnown[m.signature] = Date.now();
     learnRecord(m);
     var c = m.coin || {};
@@ -2041,6 +2167,9 @@ function sNotify(moves){
             planTxt(m)
     });
   });
+
+  kontrollAufnehmen(moves, gemeldete);
+
   var grenze = Date.now() - 86400000, sauber = {};
   Object.keys(sKnown).forEach(function(k){ if(sKnown[k] > grenze) sauber[k] = sKnown[k]; });
   sKnown = sauber;
