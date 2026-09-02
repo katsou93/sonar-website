@@ -909,6 +909,29 @@ async function main() {
     });
   });
 
+  await check("ohne Schluessel liefert die Selbstsuche keine Kundschafter", () => {
+    const alt = process.env.HELIUS_API_KEY;
+    delete process.env.HELIUS_API_KEY;
+    return wl.findScouts().then((res) => {
+      if (alt) process.env.HELIUS_API_KEY = alt;
+      assert.strictEqual(res.keyMissing, true);
+      assert.deepStrictEqual(res.scouts, []);
+    });
+  });
+
+  await check("eine Wallet mit nur einem Treffer ist kein Kundschafter", () => {
+    // Genau die Stelle, an der so ein System sonst luegt: an jedem Tag
+    // sind tausende Wallets zufaellig einmal frueh dabei.
+    assert.strictEqual(wl.SCOUT_MIN_HITS, 2);
+  });
+
+  await check("der Selbstsuche-Modus haengt nicht an einer Wortliste", () => {
+    // Reine Verdrahtungspruefung: autoScout existiert und ist aufrufbar.
+    assert.strictEqual(typeof wl.autoScout, "function");
+    assert.strictEqual(typeof wl.earlyBuyers, "function");
+    assert.strictEqual(typeof wl.winners, "function");
+  });
+
   console.log(failures === 0 ? "\nAlle Tests bestanden.\n" : "\n" + failures + " Test(s) fehlgeschlagen.\n");
   process.exit(failures === 0 ? 0 : 1);
 }
