@@ -692,3 +692,69 @@ module.exports.POSITION_SOL = POSITION_SOL;
 module.exports.findScouts = findScouts;
 module.exports.autoScout = autoScout;
 module.exports.SCOUT_MIN_HITS = SCOUT_MIN_HITS;
+
+/* ------------------------------------------------------------------ *
+ * Der Puls: alle 15 Sekunden schauen, ohne das Guthaben zu verbrennen
+ * ------------------------------------------------------------------ */
+
+/**
+ * Das Problem mit "alle 15 Sekunden aktualisieren": eine volle Abfrage
+ * kostet pro Wallet rund 110 Guthabenpunkte. Vier Wallets im
+ * 15-Sekunden-Takt sind 105.000 Punkte pro Stunde - das Freikontingent
+ * von einer Million waere nach neun Stunden weg.
+ *
+ * Deshalb zwei Stufen:
+ *
+ *   Der PULS fragt nur "gab es ueberhaupt etwas Neues?". Das ist ein
+ *   einfacher RPC-Aufruf, der nur Signaturen zurueckgibt - ein Bruchteil
+ *   der Kosten, und alle Wallets passen in EINE Anfrage, weil JSON-RPC
+ *   Stapel erlaubt.
+ *
+ *   Erst WENN eine neue Signatur auftaucht, laeuft die teure Abfrage,
+ *   die sagt, was gekauft wurde.
+ *
+ * Im Ruhezustand - und das ist der Normalfall - kostet der 15-Sekunden-
+ * Takt damit fast nichts.
+ */
+async function pulseSignatures(addresses) {
+  const key = process.env.HELIUS_API_KEY;
+  const wallets = parseAddresses(addresses);
+  if (!key || !wallets.length) return { keyMissing: !key, wallets: [] };
+
+  const body = wallets.map((wallet, i) => ({
+    jsonrpc: "2.0",
+    id: i,
+    method: "getSignaturesForAddress",
+    params: [wallet, { limit: 5 }],
+  }));
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 7000);
+  try {
+    const res = await fetch("https://mainnet.helius-rpc.com/?api-key=" + encodeURIComponent(key), {
+      method: "POST",
+      signal: controller.signal,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error("Helius RPC HTTP " + res.status);
+    const data = await res.json();
+    const list = Array.isArray(data) ? data : [data];
+
+    const out = wallets.map((wallet, i) => {
+      const hit = list.find((r) => r && r.id === i);
+      const sigs = (hit && hit.result) || [];
+      return {
+        wallet: wallet,
+        sigs: sigs
+          .filter((s) => s && s.signature && !s.err)
+          .map((s) => ({ signature: s.signature, blockTime: s.blockTime || null })),
+      };
+    });
+    return { keyMissing: false, wallets: out };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+module.exports.pulseSignatures = pulseSignatures;
