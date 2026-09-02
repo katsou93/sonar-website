@@ -167,6 +167,17 @@ const SOURCES = [
 
       const eigennamen = (satz) => {
         const woerter = String(satz || "").split(/\s+/);
+
+        // Title Case aussortieren. Live gemessen kamen sonst "Woman",
+        // "Outside", "Working", "Welcome" durch - alles aus
+        // Ueberschriften, die Jedes Wort Gross Schreiben. Dort traegt
+        // die Grossschreibung keine Information mehr, also darf man aus
+        // ihr auch nichts ableiten. Lieber diesen Titel ganz auslassen
+        // als aus ihm Grammatik als Thema zu verkaufen.
+        const lang = woerter.filter((w) => w.replace(/[^A-Za-z]/g, "").length >= 4);
+        const gross = lang.filter((w) => /^[A-Z]/.test(w.replace(/[^A-Za-z]/g, "")));
+        if (lang.length >= 4 && gross.length / lang.length > 0.6) return [];
+
         const treffer = [];
         const erst = (woerter[0] || "").replace(/[^A-Za-z]/g, "");
         if (erst.length >= 4 && erst.length <= 20 && /^[A-Z][a-z]/.test(erst) && !ANFANG[erst.toLowerCase()]) {
