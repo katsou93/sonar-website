@@ -861,9 +861,67 @@ function relevanceOf(move, scout, solUsd) {
     faktor = 0.7;
   }
 
+  // 5. Kommt man wieder raus?
+  //
+  // Das hier fehlte und war der teuerste blinde Fleck. Ein Coin mit
+  // 3000 Dollar Pool laesst sich kaufen, aber nicht verkaufen: die
+  // eigene Verkaufsorder bewegt den Preis so stark, dass vom Gewinn
+  // nichts uebrig bleibt. Ein Alarm fuer so einen Coin ist schlimmer
+  // als kein Alarm, weil er nach einer Gelegenheit aussieht.
+  const liq = (move.coin && move.coin.liquidityUsd) || 0;
+  if (liq > 0 && liq < 5000) {
+    faktor *= 0.35;
+    why.push("Pool nur $" + Math.round(liq / 100) / 10 + "k — Ausstieg fraglich");
+  } else if (liq > 0 && liq < 12000) {
+    faktor *= 0.7;
+  }
+
+  // Kein echtes Volumen heisst: es handeln nur Bots miteinander. Bei
+  // einem zwei Minuten alten Coin ist das normal, ab einer halben
+  // Stunde ist es ein Befund.
+  const organic = move.coin && move.coin.organicShareH1;
+  const alter = (move.coin && move.coin.ageMinutes) || 0;
+  if (organic != null && organic < 0.05 && alter >= 30) {
+    faktor *= 0.6;
+    why.push("kein echtes Volumen");
+  }
+
   move.relevance = Math.max(0, Math.min(100, Math.round(score * faktor)));
   move.why = why;
   return move.relevance;
+}
+
+/**
+ * Wer streut, meint es nicht ernst.
+ *
+ * Beim Livetest kamen drei fast gleiche Alarme hintereinander - dieselbe
+ * Wallet, derselbe Betrag, drei verschiedene Coins innerhalb von zwei
+ * Minuten. Das ist kein dreifaches Signal, das ist ein Signal, das
+ * dreimal erscheint. Wir lassen den staerksten Kauf einer Wallet stehen
+ * und daempfen die weiteren, statt sie ganz zu verwerfen - manchmal ist
+ * der zweite der richtige.
+ */
+function dampenBursts(moves) {
+  const byWallet = new Map();
+  for (const move of moves) {
+    if (move.side !== "kauf" || !move.wallet) continue;
+    const list = byWallet.get(move.wallet) || [];
+    list.push(move);
+    byWallet.set(move.wallet, list);
+  }
+  for (const list of byWallet.values()) {
+    if (list.length < 2) continue;
+    list.sort((a, b) => (b.relevance || 0) - (a.relevance || 0));
+    for (let i = 1; i < list.length; i++) {
+      const daempfer = i === 1 ? 0.85 : i === 2 ? 0.6 : 0.35;
+      const move = list[i];
+      move.relevance = Math.round((move.relevance || 0) * daempfer);
+      if (i >= 2) {
+        move.why = (move.why || []).concat(["einer von " + list.length + " Käufen dieser Wallet"]);
+      }
+    }
+  }
+  return moves;
 }
 
 /** Relevanz fuer eine ganze Liste, mit einmalig geholtem SOL-Kurs. */
@@ -884,8 +942,9 @@ async function rankMoves(moves, scouts) {
     }
     relevanceOf(move, scout, solUsd);
   }
-  return moves;
+  return dampenBursts(moves);
 }
 
 module.exports.relevanceOf = relevanceOf;
 module.exports.rankMoves = rankMoves;
+module.exports.dampenBursts = dampenBursts;
