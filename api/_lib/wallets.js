@@ -256,6 +256,9 @@ async function enrich(moves) {
       symbol: coin.symbol,
       name: coin.name,
       imageUrl: coin.imageUrl,
+      // Der Preis zum Zeitpunkt des Alarms - ohne ihn laesst sich
+      // spaeter nicht sagen, ob die Meldung etwas wert war.
+      priceUsd: coin.priceUsd,
       marketCap: coin.marketCap,
       liquidityUsd: coin.liquidityUsd,
       priceChangeH1: coin.priceChangeH1,
@@ -313,7 +316,12 @@ function clusters(moves) {
 /** Alles zusammen: verfolgen, anreichern, Zusammenlaeufe finden. */
 async function watch(addresses, opts) {
   const tracked = await trackWallets(addresses, opts);
-  if (tracked.moves.length) await enrich(tracked.moves);
+  if (tracked.moves.length) {
+    await enrich(tracked.moves);
+    // Auch bei selbst eingetragenen Wallets: ohne Vergleichsmass zaehlen
+    // Biss und unsere eigene Pruefung, das ist besser als nichts.
+    await rankMoves(tracked.moves, []);
+  }
   return {
     keyMissing: !hasKey(),
     wallets: tracked.wallets,
@@ -671,7 +679,10 @@ async function autoScout(opts) {
   });
   const addresses = ranked.slice(0, options.follow || 4).map((s) => s.wallet);
   const tracked = await trackWallets(addresses, { buysOnly: true, limit: 10, max: 30 });
-  if (tracked.moves.length) await enrich(tracked.moves);
+  if (tracked.moves.length) {
+    await enrich(tracked.moves);
+    await rankMoves(tracked.moves, found.scouts);
+  }
   return {
     keyMissing: false,
     scouts: found.scouts,
@@ -758,3 +769,123 @@ async function pulseSignatures(addresses) {
 }
 
 module.exports.pulseSignatures = pulseSignatures;
+
+/* ------------------------------------------------------------------ *
+ * Relevanz: welcher Kauf ist eine Meldung wert?
+ * ------------------------------------------------------------------ */
+
+/**
+ * Der erste Versuch war eine feste SOL-Schwelle, und die ist falsch.
+ *
+ * Ein halbes SOL in einen Coin mit 5.000 Dollar Marktwert sind ueber zwei
+ * Prozent des ganzen Dings - das ist eine Ansage. Dasselbe halbe SOL in
+ * einen Coin mit fuenf Millionen ist ein Rundungsfehler. Eine feste
+ * Schwelle wirft beides in denselben Topf und verliert genau die Faelle,
+ * um die es geht: kleine Coins, in die jemand mit Ueberzeugung reingeht.
+ *
+ * Deshalb wird nicht der Betrag bewertet, sondern vier Dinge zusammen:
+ *
+ *   Ueberzeugung - wie gross ist der Einsatz FUER DIESEN Trader? Wer
+ *                  sonst 0,03 SOL setzt und ploetzlich 0,3, hat sich
+ *                  entschieden. Wer sonst 2 SOL setzt und jetzt 0,3,
+ *                  langweilt sich.
+ *   Biss         - welchen Anteil am Coin hat er damit genommen? Das ist
+ *                  die Zahl, die einen 5k-Coin von einem 5M-Coin trennt.
+ *   Wer          - ein Positionstrader zaehlt mehr als ein Streuer.
+ *   Substanz     - unsere eigene Pruefung. Ein Coin mit null echtem
+ *                  Volumen und offenem Mint-Recht ist keine Meldung wert,
+ *                  egal wer ihn kauft.
+ *
+ * Ergebnis 0 bis 100, und jeder Punkt laesst sich in einem Satz erklaeren
+ * - das steht als "warum" mit in der Antwort.
+ */
+function relevanceOf(move, scout, solUsd) {
+  const sol = move.solAmount || 0;
+  const why = [];
+  let score = 0;
+
+  // 1. Ueberzeugung, relativ zum eigenen Normalmass.
+  const median = (scout && scout.medianSol) || 0;
+  if (median > 0.005 && sol > 0) {
+    const ratio = sol / median;
+    const pts = Math.min(35, Math.max(0, Math.log2(ratio + 1) * 18));
+    score += pts;
+    if (ratio >= 1.8) why.push(Math.round(ratio * 10) / 10 + "× sein üblicher Einsatz");
+  } else if (sol >= 1) {
+    // Ohne Vergleichsmass zaehlt der Betrag ersatzweise.
+    score += 18;
+  }
+
+  // 2. Biss: welchen Anteil am Coin hat er gekauft?
+  const mcap = move.coin && move.coin.marketCap;
+  if (solUsd && mcap && mcap > 0 && sol > 0) {
+    const share = (sol * solUsd) / mcap;
+    move.sharePct = Math.round(share * 10000) / 100;
+    const pts = Math.min(30, share * 1500);
+    score += pts;
+    if (share >= 0.005) why.push(move.sharePct + "% des ganzen Coins");
+  }
+
+  // 3. Wer kauft.
+  const kind = (scout && scout.kind) || null;
+  if (kind === "position") {
+    score += 20;
+    why.push("Positionstrader");
+  } else if (kind === "klein") {
+    score += 10;
+  }
+
+  // 4. Unsere eigene Pruefung - und zwar als FAKTOR, nicht als Abzug.
+  //
+  // Beim Testen kam ein Coin mit unserem Score 31 auf 65 Relevanz, weil
+  // jemand 2 SOL reingeworfen hatte. Das ist genau falsch herum: wie
+  // ueberzeugt jemand reingeht, aendert nichts daran, ob der Contract
+  // nachdrucken kann. Ein Multiplikator kann das Ergebnis deckeln, ein
+  // Abzug nicht.
+  let faktor = 1;
+  if (move.score != null) {
+    if (move.score >= 70) {
+      faktor = 1.15;
+      why.push("sauber geprüft (" + move.score + ")");
+    } else if (move.score >= 50) {
+      faktor = 1;
+    } else if (move.score >= 35) {
+      faktor = 0.55;
+      why.push("aber unser Score nur " + move.score);
+    } else {
+      faktor = 0.3;
+      why.push("unser Score nur " + move.score + " — Finger weg");
+    }
+  } else {
+    // Ohne eigene Pruefung bleibt es eine Behauptung.
+    faktor = 0.7;
+  }
+
+  move.relevance = Math.max(0, Math.min(100, Math.round(score * faktor)));
+  move.why = why;
+  return move.relevance;
+}
+
+/** Relevanz fuer eine ganze Liste, mit einmalig geholtem SOL-Kurs. */
+async function rankMoves(moves, scouts) {
+  if (!moves || !moves.length) return moves || [];
+  let solUsd = null;
+  try {
+    solUsd = await jup.solPrice();
+  } catch (err) {
+    solUsd = null;
+  }
+  const byWallet = new Map((scouts || []).map((s) => [s.wallet, s]));
+  for (const move of moves) {
+    const scout = byWallet.get(move.wallet) || null;
+    if (scout) {
+      move.scoutKind = scout.kind;
+      move.scoutMedianSol = scout.medianSol;
+    }
+    relevanceOf(move, scout, solUsd);
+  }
+  return moves;
+}
+
+module.exports.relevanceOf = relevanceOf;
+module.exports.rankMoves = rankMoves;

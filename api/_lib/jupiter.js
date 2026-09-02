@@ -240,4 +240,24 @@ async function discover() {
   };
 }
 
-module.exports = { discover, normalize, byMint, byMints, recent, topOrganic, topTraded, pools };
+/**
+ * Der SOL-Kurs in Dollar.
+ *
+ * Gebraucht fuer die einzige Zahl, die wirklich zaehlt: welchen ANTEIL an
+ * einem Coin jemand gerade gekauft hat. Ein SOL in einen 5k-Coin ist eine
+ * Ansage, ein SOL in einen 5M-Coin ist unsichtbar - ohne Kurs laesst sich
+ * das nicht ausrechnen.
+ */
+async function solPrice() {
+  return cached("jup:solprice", 5 * 60 * 1000, async () => {
+    try {
+      const hit = await byMint("So11111111111111111111111111111111111111112");
+      const usd = hit && (hit.usdPrice || (hit.baseAsset && hit.baseAsset.usdPrice));
+      return typeof usd === "number" && usd > 0 ? usd : null;
+    } catch (err) {
+      return null;
+    }
+  });
+}
+
+module.exports = { discover, normalize, byMint, byMints, recent, topOrganic, topTraded, pools, solPrice };
