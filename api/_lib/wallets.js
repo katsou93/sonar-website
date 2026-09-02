@@ -383,7 +383,12 @@ async function winners(limit) {
         // nie etwas. Die Spanne ist deshalb weiter - lieber ein paar
         // schwaechere Kandidaten pruefen als gar keine Ueberschneidung
         // finden koennen.
-        if (coin.ageMinutes == null || coin.ageMinutes < 120 || coin.ageMinutes > 43200) continue;
+        // Obergrenze 7 Tage, damit sich dieser Durchgang NICHT mit dem
+        // fuer etablierte Coins ueberschneidet. Live beobachtet: MADE lag
+        // in beiden Listen, und eine Wallet haette dadurch zwei "Treffer"
+        // aus einem einzigen Coin bekommen - der Schwellenwert von zwei
+        // waere damit wertlos geworden.
+        if (coin.ageMinutes == null || coin.ageMinutes < 120 || coin.ageMinutes > 10080) continue;
         if ((coin.liquidityUsd || 0) < 20000) continue;
         if ((coin.priceChangeH24 || 0) < 25) continue;
         out.push(coin);
@@ -563,8 +568,21 @@ async function findScouts(opts) {
     winners(options.coins || 4),
     establishedRunners(options.established == null ? 3 : options.established),
   ]);
-  const jobs = fresh.map((c) => ({ coin: c, stage: "launch" }))
-    .concat(old.map((c) => ({ coin: c, stage: "etabliert" })));
+  // Zweiter Riegel gegen Doppelzaehlung: selbst wenn sich die
+  // Altersgrenzen einmal verschieben, darf ein Coin nur einmal geprueft
+  // werden. Ein Coin, zwei Treffer waere gelogen.
+  const jobSeen = new Set();
+  const jobs = [];
+  for (const c of fresh) {
+    if (jobSeen.has(c.address)) continue;
+    jobSeen.add(c.address);
+    jobs.push({ coin: c, stage: "launch" });
+  }
+  for (const c of old) {
+    if (jobSeen.has(c.address)) continue;
+    jobSeen.add(c.address);
+    jobs.push({ coin: c, stage: "etabliert" });
+  }
   if (!jobs.length) return { keyMissing: false, scouts: [], winners: [] };
 
   const hits = new Map();
