@@ -1044,9 +1044,19 @@ function eigenTxt(wallet){
 
 function bilanzTxt(b){
   if(!b) return '<span class="mu2">Bilanz noch nicht geprüft</span>';
+  if(b.muster === "unlesbar"){
+    // Der Befund, den man nicht wegdiskutieren sollte: auf jeden Kauf
+    // folgt eine Sekunde später ein Verkauf über 0 SOL. So handelt kein
+    // Mensch — das ist eine Maschine, die ihre Erlöse über Unterkonten
+    // abwickelt. Prüfbar ist sie damit nicht.
+    return '<b style="color:var(--red)">nicht prüfbar</b> — '+(b.unklar||0)+
+      ' Käufe, auf die Sekunden später ein Verkauf über 0 SOL folgt. '+
+      '<span class="mu2">Das ist ein Bot mit Unterkonten, kein Händler dem man folgen kann.</span>';
+  }
   if(!b.genug){
     return '<span class="mu2">Bilanz: nur '+(b.trades||0)+' abgeschlossene Positionen'+
-      ((b.offen||0) ? ', '+b.offen+' noch offen' : '')+' — zu wenig für eine Aussage</span>';
+      ((b.offen||0) ? ', '+b.offen+' noch offen' : '')+
+      ((b.unklar||0) ? ', '+b.unklar+' nicht lesbar' : '')+' — zu wenig für eine Aussage</span>';
   }
   var farbe = b.quote >= 55 ? "var(--grn)" : b.quote >= 40 ? "var(--yel)" : "var(--red)";
   var halt = b.haltMin != null
@@ -1126,7 +1136,12 @@ function ladeBilanzen(wallets){
  * ihr Abnehmer.
  */
 function istVerlierer(b){
-  if(!b || !b.genug) return false;
+  if(!b) return false;
+  // Was sich nicht prüfen lässt, wird nicht empfohlen. Das ist keine
+  // Vorverurteilung, sondern die einzig ehrliche Antwort auf "wir
+  // können nicht sehen, ob dieser Mensch Geld verdient".
+  if(b.muster === "unlesbar") return true;
+  if(!b.genug) return false;
   if(b.quote < 25) return true;
   return b.muster === "dumper";
 }
