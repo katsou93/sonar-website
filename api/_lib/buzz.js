@@ -113,6 +113,74 @@ const SOURCES = [
       rssTitles(await getText("https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en", { source: "news", timeoutMs: 4500 })),
   },
   {
+    // Die Quelle, die bisher gefehlt hat - und vermutlich die wichtigste.
+    //
+    // Google Trends zeigt, WONACH gesucht wird. Das ist bereits die
+    // zweite Welle: jemand hat etwas gesehen und sucht danach. Reddit
+    // zeigt die erste: dort entsteht die Geschichte, Stunden bevor
+    // jemand sie googelt und Tage bevor eine Zeitung sie aufgreift.
+    //
+    // Fuer Meme-Coins ist genau dieser Vorlauf alles. Wenn ein Clip auf
+    // r/all steigt, hat noch niemand einen Coin dazu gemintet. Wenn er
+    // bei Google Trends auftaucht, gibt es schon zwanzig davon.
+    //
+    // Kostet nichts, braucht keinen Schluessel: Reddit gibt jede Seite
+    // als JSON heraus, wenn man .json anhaengt.
+    key: "reddit",
+    label: "Reddit im Aufstieg",
+    load: async () => {
+      const listen = [
+        "https://www.reddit.com/r/all/rising.json?limit=40",
+        "https://www.reddit.com/r/memes/hot.json?limit=25",
+      ];
+      const out = [];
+      const gesehen = new Set();
+      let eineGing = false;
+      for (const url of listen) {
+        try {
+          const data = await getJson(url, { source: "reddit", timeoutMs: 5000, retries: 0 });
+          const kinder = (data && data.data && data.data.children) || [];
+          for (const k of kinder) {
+            const d = k && k.data;
+            if (!d || !d.title || d.over_18) continue;
+            if (gesehen.has(d.id)) continue;
+            gesehen.add(d.id);
+            out.push({
+              title: String(d.title),
+              // Aufwaerts-Geschwindigkeit statt absoluter Punktzahl: ein
+              // Beitrag mit 800 Punkten nach zwanzig Minuten sagt mehr
+              // als einer mit 40.000 nach zwei Tagen.
+              traffic: Math.round((d.score || 0) / Math.max(1, (Date.now()/1000 - (d.created_utc||0)) / 3600)),
+            });
+          }
+          eineGing = true;
+        } catch (err) {
+          // Eine Liste kann fehlschlagen, die andere trotzdem liefern.
+        }
+      }
+      // Wenn KEINE Liste durchkam, ist das ein Fehler und kein leeres
+      // Ergebnis. Sonst steht in der Quellenanzeige "ok" neben einer
+      // Quelle, die gar nichts liefert - und man sucht den Fehler an
+      // der falschen Stelle.
+      if (!eineGing) throw new Error("Reddit nicht erreichbar");
+      return out;
+    },
+  },
+  {
+    // Nachrichtenlage aus zweiter Richtung. Google News ist stark bei
+    // Politik und Wirtschaft, Hacker News bei Technik und KI - und
+    // gerade dort entstehen gerade die meisten Themen.
+    key: "hn",
+    label: "Hacker News",
+    load: async () => {
+      const url = "https://hn.algolia.com/api/v1/search_by_date?tags=story&hitsPerPage=40";
+      const data = await getJson(url, { source: "hn", timeoutMs: 4500, retries: 0 });
+      return ((data && data.hits) || [])
+        .filter((h) => h && h.title)
+        .map((h) => ({ title: String(h.title), traffic: (h.points || 0) * 10 }));
+    },
+  },
+  {
     key: "wiki",
     label: "Wikipedia",
     load: async () => {
