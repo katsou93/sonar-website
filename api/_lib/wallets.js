@@ -637,6 +637,7 @@ function ledgerFromSwaps(txs, wallet) {
 
   const zu = [];
   let offen = 0;
+  let unklar = 0;
   for (const m of perMint.values()) {
     // Ohne Einsatz keine Aussage - das sind Airdrops oder Reste.
     if (m.solIn <= 0 || m.tokIn <= 0) continue;
@@ -644,11 +645,38 @@ function ledgerFromSwaps(txs, wallet) {
     if (verkauftAnteil < 0.8) { offen++; continue; }
     const haltMin = (m.ersterKauf && m.letzterVerkauf && m.letzterVerkauf > m.ersterKauf)
       ? (m.letzterVerkauf - m.ersterKauf) / 60 : null;
+
+    // Der Fall, der mich fast zur falschen Schlussfolgerung gebracht
+    // haette: bei fuenf von fuenf gefundenen Wallets folgte auf jeden
+    // Kauf EINE SEKUNDE spaeter ein "Verkauf" ueber 0 SOL. Nach der
+    // ersten Rechnung waren das fuenf Totalverluste und damit fuenf
+    // Verlierer - in Wahrheit ist es gar kein Verkauf. Die Token gehen
+    // an ein Unterkonto oder der Erloes landet auf einer anderen
+    // Adresse; wir sehen nur die halbe Bewegung.
+    //
+    // Ein Verkauf ueber 0 SOL NACH einer echten Haltedauer ist dagegen
+    // sehr wohl eine Aussage: dann ist der Coin gestorben und der
+    // Totalverlust gehoert in die Bilanz. Die Uhr trennt die beiden
+    // Faelle sauber.
+    if (m.solOut <= 0 && (haltMin == null || haltMin < 1)) { unklar++; continue; }
+
     zu.push({ mint: m.mint, symbol: m.symbol, x: m.solOut / m.solIn, solIn: m.solIn, haltMin: haltMin });
   }
 
   if (zu.length < BILANZ_MIN_TRADES) {
-    return { trades: zu.length, offen: offen, genug: false, quote: null, median: null, bestX: null };
+    // Eine Wallet, deren Bewegungen fast alle unlesbar sind, ist keine
+    // Wallet mit zu wenig Daten - sie ist eine Maschine mit
+    // Unterkonten. Live gemessen: bei allen fuenf gefundenen
+    // Kandidaten folgte auf jeden Kauf eine Sekunde spaeter ein
+    // Nullverkauf. Ein Mensch handelt nicht so. Wir koennen so jemanden
+    // nicht pruefen, und was man nicht pruefen kann, empfiehlt man
+    // nicht.
+    const botartig = unklar >= 8 && zu.length === 0;
+    return {
+      trades: zu.length, offen: offen, unklar: unklar, genug: false,
+      quote: null, median: null, bestX: null,
+      muster: botartig ? "unlesbar" : null,
+    };
   }
 
   const gewinne = zu.filter((t) => t.x >= 1.05).length;
@@ -681,6 +709,8 @@ function ledgerFromSwaps(txs, wallet) {
     // wie oft hat dieser Mensch eine Position wirklich versechsfacht
     // UND sie dann auch verkauft? Papiergewinne zaehlen hier nicht.
     sechsfach: zu.filter((t) => t.x >= 6).length,
+    offen: offen,
+    unklar: unklar,
     haltMin: haltMedian,
     schnellAnteil: schnellAnteil,
     // Das Urteil, das vorher gefehlt hat.
