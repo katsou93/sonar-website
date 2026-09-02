@@ -982,6 +982,43 @@ async function main() {
     m.why.forEach((w) => assert.ok(typeof w === "string" && w.length > 3));
   });
 
+  await check("ein Coin, aus dem man nicht rauskommt, meldet nicht", () => {
+    // Live-Befund: drei Alarme fuer Coins mit 3000 Dollar Pool. Kaufen
+    // geht, verkaufen nicht - die eigene Order frisst den Gewinn. Das
+    // ist schlimmer als kein Alarm, weil es nach Gelegenheit aussieht.
+    const eng = rel({ wallet: "w1", solAmount: 0.25, score: 56, coin: { marketCap: 2800, liquidityUsd: 3000 } });
+    const weit = rel({ wallet: "w1", solAmount: 0.25, score: 56, coin: { marketCap: 2800, liquidityUsd: 40000 } });
+    assert.ok(eng.relevance < weit.relevance,
+      "flacher Pool haette daempfen muessen: " + eng.relevance + " vs " + weit.relevance);
+    assert.ok(eng.why.join(" ").indexOf("Ausstieg") !== -1, "Grund fehlt: " + JSON.stringify(eng.why));
+  });
+
+  await check("kein echtes Volumen zaehlt erst, wenn der Coin alt genug dafuer ist", () => {
+    // Ein zwei Minuten alter Coin HAT noch kein organisches Volumen.
+    // Ihn dafuer zu bestrafen wuerde genau die fruehen Faelle killen,
+    // wegen derer das Werkzeug ueberhaupt existiert.
+    const frisch = rel({ wallet: "w1", solAmount: 0.5, score: 60, coin: { marketCap: 9000, liquidityUsd: 30000, organicShareH1: 0, ageMinutes: 3 } });
+    const alt = rel({ wallet: "w1", solAmount: 0.5, score: 60, coin: { marketCap: 9000, liquidityUsd: 30000, organicShareH1: 0, ageMinutes: 120 } });
+    assert.ok(alt.relevance < frisch.relevance,
+      "der alte Bot-Coin haette daempfen muessen: " + alt.relevance + " vs " + frisch.relevance);
+  });
+
+  await check("dieselbe Wallet meldet nicht dreimal in Folge dasselbe Signal", () => {
+    // Live-Befund: drei fast identische Alarme, eine Wallet, zwei
+    // Minuten. Das ist ein Signal, das dreimal erscheint - nicht drei.
+    const bau = (mint, r) => ({ wallet: "w1", mint: mint, side: "kauf", relevance: r, why: [] });
+    const liste = wl.dampenBursts([bau("a", 60), bau("b", 58), bau("c", 55), bau("d", 50)]);
+    const nach = new Map(liste.map((m) => [m.mint, m.relevance]));
+    assert.strictEqual(nach.get("a"), 60, "der staerkste Kauf bleibt unangetastet");
+    assert.ok(nach.get("b") < 58 && nach.get("c") < 55 && nach.get("d") < 50);
+    assert.ok(nach.get("d") < nach.get("c"), "je weiter gestreut, desto leiser");
+  });
+
+  await check("ein einzelner Kauf wird nicht als Streuen bestraft", () => {
+    const einer = wl.dampenBursts([{ wallet: "w9", mint: "x", side: "kauf", relevance: 71, why: [] }]);
+    assert.strictEqual(einer[0].relevance, 71);
+  });
+
   await check("der Puls verlangt einen Schluessel, wirft aber nicht", () => {
     const alt = process.env.HELIUS_API_KEY;
     delete process.env.HELIUS_API_KEY;
