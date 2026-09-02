@@ -1206,6 +1206,21 @@ async function main() {
     });
   });
 
+  await check("ein Verkauf ohne den zugehoerigen Kauf zaehlt nicht mit", () => {
+    // Der Fehler, der die Bilanz zuerst wertlos machte: live verkaufte
+    // eine Wallet einen Coin in neunzehn Tranchen, der Kauf lag aber
+    // ausserhalb des abgefragten Fensters. Ohne diese Regel haette das
+    // wie ein Gewinn aus dem Nichts ausgesehen.
+    const nurVerkauf = [{
+      signature: "s1", timestamp: 2, tokenTransfers: [
+        { mint: "RIPE", tokenAmount: 2500000, fromUserAccount: "W", toUserAccount: "P", tokenSymbol: "RIPE" },
+      ], nativeTransfers: [{ toUserAccount: "W", fromUserAccount: "P", amount: 1.1e9 }],
+    }];
+    const b = wl.ledgerFromSwaps(nurVerkauf, "W");
+    assert.strictEqual(b.trades, 0);
+    assert.strictEqual(b.genug, false);
+  });
+
   await check("acht geschlossene Positionen sind die Untergrenze", () => {
     assert.strictEqual(wl.BILANZ_MIN_TRADES, 8);
   });
