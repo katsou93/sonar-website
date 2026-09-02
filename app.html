@@ -943,7 +943,7 @@ function moveRow(m){
   var c = m.coin || {};
   var meta = [];
   if(m.relevance != null) meta.push("Relevanz " + m.relevance);
-  if(m.score != null) meta.push("Score " + m.score);
+  if(m.score != null) meta.push("Vorprüfung " + m.score);
   if(c.organicShareH1 != null) meta.push(Math.round(c.organicShareH1*100) + "% echt");
   if(c.marketCap) meta.push(money(c.marketCap));
   if(c.ageMinutes != null) meta.push(age(c.ageMinutes) + " alt");
@@ -1033,6 +1033,15 @@ function geprueft(j){
  */
 var BILANZ = {};
 
+/** Und was hat SEIN Signal DIR gebracht? Die ehrlichere der beiden Zahlen. */
+function eigenTxt(wallet){
+  var e = walletBilanzEigen(wallet);
+  if(!e) return '';
+  var farbe = e.quote >= 40 ? "var(--grn)" : e.quote >= 20 ? "var(--yel)" : "var(--red)";
+  return '<div class="det">Für dich: <b style="color:'+farbe+'">'+e.quote+'%</b> seiner '+e.n+
+    ' Meldungen liefen danach +20%</div>';
+}
+
 function bilanzTxt(b){
   if(!b) return '<span class="mu2">Bilanz noch nicht geprüft</span>';
   if(!b.genug){
@@ -1040,9 +1049,13 @@ function bilanzTxt(b){
       ((b.offen||0) ? ', '+b.offen+' noch offen' : '')+' — zu wenig für eine Aussage</span>';
   }
   var farbe = b.quote >= 55 ? "var(--grn)" : b.quote >= 40 ? "var(--yel)" : "var(--red)";
+  var halt = b.haltMin != null
+    ? ' · hält im Mittel <b>' + (b.haltMin < 60 ? Math.round(b.haltMin)+' Min' : Math.round(b.haltMin/60)+' Std') + '</b>'
+    : '';
   return 'Bilanz: <b style="color:'+farbe+'">'+b.quote+'% im Plus</b> aus '+b.trades+' verkauften Positionen'+
     ' · Mittelwert <b>'+b.median+'×</b>'+
-    ((b.sechsfach||0) ? ' · <b style="color:var(--grn)">'+b.sechsfach+'× versechsfacht</b>' : ' · <span class="mu2">nie versechsfacht</span>');
+    ((b.sechsfach||0) ? ' · <b style="color:var(--grn)">'+b.sechsfach+'× versechsfacht</b>' : ' · <span class="mu2">nie versechsfacht</span>')+
+    halt + musterTxt(b.muster);
 }
 
 function scoutRow(sc){
@@ -1064,7 +1077,8 @@ function scoutRow(sc){
       '<div class="det">Einsatz beim Einstieg: <b>'+(sc.medianSol||0)+' SOL</b> im Mittel'+
         (sc.onEstablished ? ' · <b style="color:var(--grn)">'+sc.onEstablished+'× in etablierten Coins</b>' : '')+
       '</div>'+
-      '<div class="det bil" data-bil="'+esc(sc.wallet)+'">'+bilanzTxt(BILANZ[sc.wallet])+'</div></div>'+
+      '<div class="det bil" data-bil="'+esc(sc.wallet)+'">'+bilanzTxt(BILANZ[sc.wallet])+'</div>'+
+      eigenTxt(sc.wallet)+'</div>'+
     '<button class="btn '+(kind==="position"?"btn-p":"btn-g")+' btn-sm" data-follow="'+esc(sc.wallet)+'">verfolgen</button>'+
   '</div>';
 }
@@ -1099,10 +1113,33 @@ function ladeBilanzen(wallets){
     .catch(function(){});
 }
 
-/** Nachweislich im Minus - nicht "noch nicht bewiesen". Der Unterschied zaehlt. */
+/**
+ * Nicht folgen - und zwar aus zwei ganz verschiedenen Gruenden.
+ *
+ * Der eine ist offensichtlich: wer verliert, taugt nicht als Vorbild.
+ * Der andere ist der gefaehrlichere, weil er sich als Erfolg tarnt.
+ * Eine Pump-and-Dump-Wallet hat eine glaenzende Bilanz - hohe
+ * Trefferquote, gute Multiplikatoren, immer frueh dabei. Sie gewinnt ja
+ * auch. Nur verdient sie ihr Geld an denen, die ihr folgen: sie kauft,
+ * wartet bis genug Leute nachziehen, und verkauft in deren Kaufdruck
+ * hinein. Wer ihrem Kauf nachlaeuft, ist nicht ihr Nachahmer, sondern
+ * ihr Abnehmer.
+ */
 function istVerlierer(b){
-  return !!(b && b.genug && b.quote < 25);
+  if(!b || !b.genug) return false;
+  if(b.quote < 25) return true;
+  return b.muster === "dumper";
 }
+
+var MUSTER_TXT = {
+  dumper:   ' · <b style="color:var(--red)">stößt schnell wieder ab — du wärst sein Abnehmer</b>',
+  geduldig: ' · <b style="color:var(--grn)">hält durch</b>',
+  treffer:  '',
+  verlierer:'',
+  normal:   '',
+  unklar:   ' · <span class="mu2">Haltedauer unbekannt</span>'
+};
+function musterTxt(m){ return MUSTER_TXT[m] || ''; }
 
 /** Die Selbstsuche: Kundschafter finden und zeigen, was sie kaufen. */
 function loadScouts(){
@@ -1157,7 +1194,12 @@ function loadScouts(){
       }
 
       html += '<div class="wsec"><h3>Was sie gerade kaufen</h3>'+
-        '<p class="sub">Die letzten Käufe der gefundenen Wallets, mit <b>unserer</b> Prüfung daneben — '+
+        '<p class="sub"><b style="color:var(--yel)">Zur Zahl neben dem Coin:</b> in dieser Liste steht die '+
+        '<b>Vorprüfung</b> — sie kommt aus den Marktdaten allein, weil sie für dutzende Coins gleichzeitig '+
+        'berechnet wird. Klickst du auf <b>Prüfen</b>, läuft die <b>volle Prüfung</b>: zusätzlich Rugcheck, '+
+        'die echte Holder-Verteilung und der Anteil des Erstellers. Deshalb weichen die beiden Zahlen ab — '+
+        'das ist kein Fehler, die volle Prüfung weiß mehr. Vor dem Kauf zählt sie.</p>'+
+        '<p class="sub">Die letzten Käufe der gefundenen Wallets — '+
         'zuerst die mit echtem Einsatz. Das ist ein Hinweis, wo du hinschauen solltest, keine Empfehlung. '+
         'Wer kopiert, ist immer hinten dran.</p>'+
         ((j.moves && j.moves.length) ? j.moves.map(moveRow).join("")
@@ -1432,7 +1474,7 @@ function clusterAlarm(clusters){
       plain: c.buys + " Käufe, " + c.solTotal + " SOL zusammen",
       info: "<b>" + c.buys + " Käufe · " + c.solTotal + " SOL zusammen</b>" +
             (coin.marketCap ? " · MCap " + money(coin.marketCap) : "") +
-            (c.score != null ? "<br>Unser Score <b>" + c.score + "</b>" : "") +
+            (c.score != null ? "<br>Vorprüfung <b>" + c.score + "</b>" : "") +
             (coin.organicShareH1 != null ? " · " + Math.round(coin.organicShareH1*100) + "% echtes Volumen" : "")
     });
   });
@@ -1562,9 +1604,30 @@ function learnRecord(m){
   LEARN.alerts.push({
     mint: m.mint, symbol: m.symbol || "?", ts: Date.now(),
     relevance: m.relevance || 0, preis: preis || null,
+    // WESSEN Kauf war das? Ohne diese Zeile lernt die App nur ueber
+    // Coins - mit ihr lernt sie ueber Menschen, und das ist die
+    // haltbarere Erkenntnis. Ein Coin ist morgen vorbei, ein Trader
+    // handelt naechste Woche wieder.
+    wallet: m.wallet || null,
     mcap: (m.coin && m.coin.marketCap) || null, ergebnis: null
   });
   learnSave();
+}
+
+/**
+ * Was ist aus den Meldungen DIESER Wallet geworden?
+ *
+ * Die Bilanz sagt, ob jemand fuer sich selbst Geld verdient. Das hier
+ * sagt etwas anderes und fuer dich Wichtigeres: ob es sich gelohnt hat,
+ * IHM ZU FOLGEN. Das kann auseinanderfallen - wer nach vier Minuten
+ * verkauft, gewinnt selbst und laesst dich trotzdem stehen. Deshalb
+ * wird beides getrennt gemessen.
+ */
+function walletBilanzEigen(wallet){
+  var meine = LEARN.alerts.filter(function(a){ return a.wallet === wallet && a.ergebnis != null; });
+  if(meine.length < 4) return null;
+  var gut = meine.filter(function(a){ return a.ergebnis >= 20; }).length;
+  return { n: meine.length, quote: Math.round((gut / meine.length) * 100) };
 }
 
 /**
@@ -1646,6 +1709,11 @@ function sNotify(moves){
     // Von einer Wallet, die nachweislich verliert, will man keinen
     // Alarm - auch dann nicht, wenn dieser eine Kauf gut aussieht.
     if(istVerlierer(BILANZ[m.wallet])) return false;
+    // Und die eigene Erfahrung schlaegt jede Statistik: wenn von zehn
+    // Meldungen dieser Wallet keine einzige gelaufen ist, hilft es
+    // nicht, dass ihre Bilanz gut aussieht.
+    var eigen = walletBilanzEigen(m.wallet);
+    if(eigen && eigen.n >= 8 && eigen.quote < 15) return false;
     return istRelevant(m, f);
   }).slice(0,3).forEach(function(m){
     sKnown[m.signature] = Date.now();
@@ -1657,10 +1725,10 @@ function sNotify(moves){
       symbol: m.symbol || "?",
       name: c.name || "",
       mint: m.mint,
-      plain: (m.solAmount ? m.solAmount + " SOL" : "") + (m.score != null ? " · Score " + m.score : ""),
+      plain: (m.solAmount ? m.solAmount + " SOL" : "") + (m.score != null ? " · Vorprüfung " + m.score : ""),
       info: (m.solAmount ? "<b>" + m.solAmount + " SOL</b> eingesetzt" : "Einsatz unbekannt") +
             (m.sharePct ? " = <b>" + m.sharePct + "%</b> des Coins" : "") +
-            (m.score != null ? " · Unser Score <b>" + m.score + "</b>" : "") +
+            (m.score != null ? " · Vorprüfung <b>" + m.score + "</b>" : "") +
             (c.marketCap ? "<br>MCap " + money(c.marketCap) : "") +
             (c.organicShareH1 != null ? " · " + Math.round(c.organicShareH1*100) + "% echtes Volumen" : "") +
             (c.ageMinutes != null ? " · " + age(c.ageMinutes) + " alt" : "") +
@@ -2113,7 +2181,7 @@ function renderReport(r){
           '<span class="mu2" style="font-size:13px;font-weight:400">'+esc(r.name||"")+'</span></div>'+
           '<div class="tokaddr" id="copyaddr" title="Klicken zum Kopieren">'+esc(r.address)+'</div></div></div>'+
       '<div class="verdictbar '+vclass+'">'+
-        '<div><div class="scorebig">'+r.score+'</div><div class="scoresub">Score</div></div>'+
+        '<div><div class="scorebig">'+r.score+'</div><div class="scoresub">volle Prüfung</div></div>'+
         '<div class="verdicttext"><b>'+vlabel+'</b><span>'+esc(r.summary)+'</span></div></div>'+
       '<div class="grid">'+cells+'</div>'+
       '<div class="linkrow">'+
