@@ -416,18 +416,134 @@ async function earlyBuyers(mint, howMany) {
   });
 
   const counts = new Map();
-  const order = [];
+  const first = new Map();
   for (const tx of txs) {
     const wallet = tx && tx.feePayer;
     if (!wallet) continue;
     const move = buyFromSwap(tx, wallet);
     if (!move || move.side !== "kauf" || move.mint !== mint) continue;
     counts.set(wallet, (counts.get(wallet) || 0) + 1);
-    if (!order.includes(wallet)) order.push(wallet);
+    // Der ERSTE Kauf zaehlt: wie viel hat er reingesteckt, als er sich
+    // entschieden hat? Nachkaeufe verwaessern diese Aussage.
+    if (!first.has(wallet)) first.set(wallet, { wallet: wallet, sol: move.solAmount || 0, rank: first.size + 1 });
   }
 
   // Wer in EINEM Coin dauernd kauft, ist ein Bot oder der Pool selbst.
-  return order.filter((w) => counts.get(w) <= 3).slice(0, howMany || 40);
+  return Array.from(first.values())
+    .filter((b) => counts.get(b.wallet) <= 3)
+    .slice(0, howMany || 40);
+}
+
+/**
+ * Die Einstufung, die den ersten Live-Lauf gerettet hat.
+ *
+ * Beim ersten Test fand die Suche drei Wallets, die tatsaechlich mehrfach
+ * frueh in Gewinnern waren. Ein Blick auf ihre laufenden Kaeufe zeigte
+ * aber: 0,003 bis 0,09 SOL pro Position, in Coins, die null bis zwei
+ * Minuten alt waren. Das sind keine Trader, das sind Schrotflinten - sie
+ * kaufen im Minutentakt hunderte frische Launches fuer Centbetraege, und
+ * einer davon geht ab. Genau deshalb landen sie in jeder
+ * Gewinner-Rueckwaertssuche.
+ *
+ * Wer denen mit ernsthaften Betraegen folgt, verliert: ihre Rechnung geht
+ * nur mit hundert Mini-Wetten auf, nicht mit drei richtigen.
+ *
+ * Also messen wir, was sie selbst gesetzt haben. Der Median ueber ihre
+ * Ersteinstiege trennt die beiden Sorten sauber.
+ */
+function medianOf(numbers) {
+  const list = (numbers || []).filter((n) => typeof n === "number" && isFinite(n)).sort((a, b) => a - b);
+  if (!list.length) return 0;
+  const mid = Math.floor(list.length / 2);
+  return list.length % 2 ? list[mid] : (list[mid - 1] + list[mid]) / 2;
+}
+
+/** Ab welchem Median-Einsatz reden wir von einer echten Position? */
+const POSITION_SOL = 0.5;
+
+function kindOf(medianSol) {
+  if (!medianSol || medianSol < 0.1) return "streuer";
+  if (medianSol < POSITION_SOL) return "klein";
+  return "position";
+}
+
+/**
+ * Die zweite Suche: etablierte Coins, die gelaufen sind.
+ *
+ * Die Rueckwaertssuche ueber frische Launches findet zwangslaeufig
+ * Schrotflinten - "wer war frueh in einem Coin, der 5000% gemacht hat"
+ * IST die Beschreibung eines Launch-Snipers. Fuer die Sorte Handel, um
+ * die es hier eigentlich geht, braucht es eine andere Frage:
+ *
+ *   Welche ALTEN Coins sind gelaufen - und wer hatte die schon vorher?
+ *
+ * Das findet Leute, die eine Position aufbauen und warten, statt hundert
+ * Lose zu kaufen. Genau die Sorte, der man mit ernsthaften Betraegen
+ * folgen kann.
+ */
+async function establishedRunners(limit) {
+  const max = limit || 3;
+  return cached("scout:established", 60 * 60 * 1000, async () => {
+    const lists = await Promise.allSettled([jup.topOrganic("24h"), jup.topTraded("24h")]);
+    const seen = new Set();
+    const out = [];
+    for (const res of lists) {
+      if (res.status !== "fulfilled") continue;
+      for (const asset of res.value || []) {
+        const coin = jup.normalize(asset, null);
+        if (!coin || !coin.address || seen.has(coin.address)) continue;
+        seen.add(coin.address);
+        if (isNoise(coin)) continue;
+        // Mindestens eine Woche alt, richtig gross, und in 24 Stunden
+        // deutlich gelaufen.
+        if (coin.ageMinutes == null || coin.ageMinutes < 10080) continue;
+        if ((coin.marketCap || 0) < 1000000) continue;
+        if ((coin.liquidityUsd || 0) < 100000) continue;
+        if ((coin.priceChangeH24 || 0) < 25) continue;
+        out.push(coin);
+      }
+    }
+    out.sort((a, b) => (b.priceChangeH24 || 0) - (a.priceChangeH24 || 0));
+    return out.slice(0, max);
+  });
+}
+
+/**
+ * Wer hat diesen Coin gekauft, BEVOR er lief?
+ *
+ * Bei einem alten Coin sind die ersten hundert Transaktionen Monate her
+ * und wertlos. Interessant ist das Fenster kurz vor der Bewegung: von
+ * drei Tagen zurueck bis acht Stunden zurueck. Wer da eingestiegen ist,
+ * hat vor dem Anstieg gekauft.
+ */
+async function buyersBefore(mint, howMany) {
+  const key = process.env.HELIUS_API_KEY;
+  if (!key) return [];
+  const now = Math.floor(Date.now() / 1000);
+  const url =
+    HELIUS + "/v0/addresses/" + mint + "/transactions?api-key=" + encodeURIComponent(key) +
+    "&type=SWAP&sort-order=asc&limit=100" +
+    "&gte-time=" + (now - 3 * 24 * 3600) +
+    "&lte-time=" + (now - 8 * 3600);
+
+  const txs = await cached("scout:before:" + mint, 6 * 60 * 60 * 1000, async () => {
+    const data = await getJson(url, { source: "helius", timeoutMs: 9000, retries: 0 });
+    return Array.isArray(data) ? data : [];
+  });
+
+  const counts = new Map();
+  const first = new Map();
+  for (const tx of txs) {
+    const wallet = tx && tx.feePayer;
+    if (!wallet) continue;
+    const move = buyFromSwap(tx, wallet);
+    if (!move || move.side !== "kauf" || move.mint !== mint) continue;
+    counts.set(wallet, (counts.get(wallet) || 0) + 1);
+    if (!first.has(wallet)) first.set(wallet, { wallet: wallet, sol: move.solAmount || 0, rank: first.size + 1 });
+  }
+  return Array.from(first.values())
+    .filter((b) => counts.get(b.wallet) <= 3)
+    .slice(0, howMany || 40);
 }
 
 /** Wie viele Coins muss eine Wallet frueh getroffen haben, um zu zaehlen? */
@@ -441,17 +557,25 @@ async function findScouts(opts) {
   const options = opts || {};
   if (!hasKey()) return { keyMissing: true, scouts: [], winners: [] };
 
-  const coins = await winners(options.coins || 10);
-  if (!coins.length) return { keyMissing: false, scouts: [], winners: [] };
+  // Zwei Durchgaenge: frische Launches und etablierte Coins. Sie finden
+  // voellig unterschiedliche Leute, und genau darum geht es.
+  const [fresh, old] = await Promise.all([
+    winners(options.coins || 4),
+    establishedRunners(options.established == null ? 3 : options.established),
+  ]);
+  const jobs = fresh.map((c) => ({ coin: c, stage: "launch" }))
+    .concat(old.map((c) => ({ coin: c, stage: "etabliert" })));
+  if (!jobs.length) return { keyMissing: false, scouts: [], winners: [] };
 
   const hits = new Map();
   const checked = [];
-  for (let i = 0; i < coins.length; i++) {
-    const coin = coins[i];
+  for (let i = 0; i < jobs.length; i++) {
+    const coin = jobs[i].coin;
+    const stage = jobs[i].stage;
     if (i > 0) await new Promise((r) => setTimeout(r, 550));
     let buyers = [];
     try {
-      buyers = await earlyBuyers(coin.address, 40);
+      buyers = stage === "launch" ? await earlyBuyers(coin.address, 40) : await buyersBefore(coin.address, 40);
     } catch (err) {
       continue;
     }
@@ -460,13 +584,22 @@ async function findScouts(opts) {
       symbol: coin.symbol,
       priceChangeH24: coin.priceChangeH24,
       ageMinutes: coin.ageMinutes,
+      stage: stage,
       buyers: buyers.length,
     });
-    buyers.forEach((wallet, rank) => {
-      const hit = hits.get(wallet) || { wallet: wallet, coins: [], bestRank: 999 };
-      hit.coins.push({ symbol: coin.symbol, address: coin.address, rank: rank + 1, priceChangeH24: coin.priceChangeH24 });
-      hit.bestRank = Math.min(hit.bestRank, rank + 1);
-      hits.set(wallet, hit);
+    buyers.forEach((buyer) => {
+      const hit = hits.get(buyer.wallet) || { wallet: buyer.wallet, coins: [], bestRank: 999, sols: [] };
+      hit.coins.push({
+        symbol: coin.symbol,
+        address: coin.address,
+        rank: buyer.rank,
+        sol: buyer.sol,
+        stage: stage,
+        priceChangeH24: coin.priceChangeH24,
+      });
+      hit.bestRank = Math.min(hit.bestRank, buyer.rank);
+      hit.sols.push(buyer.sol || 0);
+      hits.set(buyer.wallet, hit);
     });
   }
 
@@ -476,14 +609,26 @@ async function findScouts(opts) {
     // Wer in fast allen untersuchten Coins drin war, kauft alles. Das ist
     // ein Bot, kein Kundschafter - und sein Treffer sagt nichts aus.
     .filter((h) => total < 4 || h.coins.length <= Math.ceil(total * 0.75))
-    .map((h) => ({
-      wallet: h.wallet,
-      hits: h.coins.length,
-      bestRank: h.bestRank,
-      coins: h.coins.sort((a, b) => a.rank - b.rank).slice(0, 4),
-    }))
-    .sort((a, b) => b.hits - a.hits || a.bestRank - b.bestRank)
-    .slice(0, options.max || 6);
+    .map((h) => {
+      const median = medianOf(h.sols);
+      return {
+        wallet: h.wallet,
+        hits: h.coins.length,
+        bestRank: h.bestRank,
+        medianSol: Math.round(median * 1000) / 1000,
+        totalSol: Math.round(h.sols.reduce((x, y) => x + y, 0) * 100) / 100,
+        kind: kindOf(median),
+        // Wer in etablierten Coins vor dem Anstieg drin war, spielt ein
+        // anderes Spiel als ein Launch-Sniper. Beides ist gueltig - man
+        // darf es nur nicht verwechseln.
+        onEstablished: h.coins.filter((c) => c.stage === "etabliert").length,
+        coins: h.coins.sort((a, b) => a.rank - b.rank).slice(0, 4),
+      };
+    })
+    // Zuerst die mit dem groesseren Einsatz: wer 3 SOL setzt, hat eine
+    // Meinung. Wer 0,03 SOL setzt, hat ein Skript.
+    .sort((a, b) => b.hits - a.hits || b.medianSol - a.medianSol || a.bestRank - b.bestRank)
+    .slice(0, options.max || 8);
 
   return { keyMissing: false, scouts: scouts, winners: checked };
 }
@@ -500,7 +645,13 @@ async function autoScout(opts) {
   if (found.keyMissing || !found.scouts.length) {
     return { keyMissing: found.keyMissing, scouts: found.scouts, winners: found.winners, moves: [], clusters: [] };
   }
-  const addresses = found.scouts.slice(0, options.follow || 5).map((s) => s.wallet);
+  // Wem folgen wir? Zuerst denen mit echtem Einsatz. Einem Streuer zu
+  // folgen bringt nichts - er kauft in der Minute den naechsten.
+  const ranked = found.scouts.slice().sort((a, b) => {
+    const weight = (x) => (x.kind === "position" ? 2 : x.kind === "klein" ? 1 : 0) + (x.onEstablished ? 1 : 0);
+    return weight(b) - weight(a) || b.hits - a.hits || b.medianSol - a.medianSol;
+  });
+  const addresses = ranked.slice(0, options.follow || 4).map((s) => s.wallet);
   const tracked = await trackWallets(addresses, { buysOnly: true, limit: 10, max: 30 });
   if (tracked.moves.length) await enrich(tracked.moves);
   return {
@@ -515,6 +666,11 @@ async function autoScout(opts) {
 
 module.exports.winners = winners;
 module.exports.earlyBuyers = earlyBuyers;
+module.exports.buyersBefore = buyersBefore;
+module.exports.establishedRunners = establishedRunners;
+module.exports.kindOf = kindOf;
+module.exports.medianOf = medianOf;
+module.exports.POSITION_SOL = POSITION_SOL;
 module.exports.findScouts = findScouts;
 module.exports.autoScout = autoScout;
 module.exports.SCOUT_MIN_HITS = SCOUT_MIN_HITS;
