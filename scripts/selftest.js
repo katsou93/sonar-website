@@ -1221,6 +1221,52 @@ async function main() {
     assert.strictEqual(b.genug, false);
   });
 
+  console.log("\nPump and Dump: die Wallet, die grossartig aussieht und dich braucht");
+
+  const handeln = (n, x, haltSek) => {
+    let t = [];
+    for (let i = 0; i < n; i++) {
+      t.push({ signature: "b" + i, timestamp: 1000, tokenTransfers: [
+        { mint: "m" + i, tokenAmount: 1000, toUserAccount: "W", fromUserAccount: "P" }],
+        nativeTransfers: [{ fromUserAccount: "W", toUserAccount: "P", amount: 1e9 }] });
+      t.push({ signature: "s" + i, timestamp: 1000 + haltSek, tokenTransfers: [
+        { mint: "m" + i, tokenAmount: 1000, fromUserAccount: "W", toUserAccount: "P" }],
+        nativeTransfers: [{ toUserAccount: "W", fromUserAccount: "P", amount: x * 1e9 }] });
+    }
+    return t;
+  };
+
+  await check("eine Wallet, die nach vier Minuten alles abstoesst, ist ein Dumper", () => {
+    // Der Fall, der jede Statistik austrickst: 100% Trefferquote,
+    // sauberer Multiplikator, immer frueh dabei. Sie gewinnt auch - nur
+    // auf Kosten derer, die ihr folgen. Wer ihrem Kauf nachlaeuft,
+    // kauft ihr das Paket ab, kurz bevor sie es loswerden will.
+    const b = wl.ledgerFromSwaps(handeln(10, 2, 240), "W");
+    assert.strictEqual(b.quote, 100, "sie gewinnt ja tatsaechlich");
+    assert.strictEqual(b.muster, "dumper", "trotzdem darf sie nicht empfohlen werden");
+  });
+
+  await check("wer stundenlang haelt und gewinnt, ist das Gegenteil", () => {
+    const b = wl.ledgerFromSwaps(handeln(10, 3, 18000), "W");
+    assert.strictEqual(b.muster, "geduldig");
+    assert.ok(b.haltMin >= 60);
+  });
+
+  await check("die Haltedauer wird gemessen, nicht geschaetzt", () => {
+    const b = wl.ledgerFromSwaps(handeln(9, 2, 3600), "W");
+    assert.strictEqual(b.haltMin, 60);
+    assert.strictEqual(b.schnellAnteil, 0);
+  });
+
+  await check("ohne Zeitstempel wird kein Muster behauptet", () => {
+    // Lieber "unklar" als eine Einordnung, die auf nichts beruht.
+    assert.strictEqual(wl.musterVon(80, null, null, 3), "unklar");
+  });
+
+  await check("zwanzig Minuten ist die Grenze zum Dumpen", () => {
+    assert.strictEqual(wl.DUMP_MINUTEN, 20);
+  });
+
   await check("acht geschlossene Positionen sind die Untergrenze", () => {
     assert.strictEqual(wl.BILANZ_MIN_TRADES, 8);
   });
