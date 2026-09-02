@@ -276,6 +276,16 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
   border:1px solid var(--border);font-size:12px;line-height:1.6}
 .nach>div+div{margin-top:3px}
 .alert.verrissen{opacity:.5;border-color:rgba(255,90,90,.45)}
+.kohtab{margin-top:18px}
+.kohtab h4{font-size:13px;font-weight:600;color:var(--tx);margin:0 0 8px;letter-spacing:.01em}
+.kohzeile{display:flex;align-items:center;gap:10px;padding:5px 0;font-family:var(--mono);font-size:12px}
+.kohzeile .kl{width:150px;flex:none;color:var(--mu)}
+.kohzeile .kb{flex:1;height:8px;border-radius:4px;background:rgba(255,255,255,.05);overflow:hidden}
+.kohzeile .kb i{display:block;height:100%;background:rgba(20,241,149,.35);border-radius:4px}
+.kohzeile .kq{width:44px;flex:none;text-align:right;color:var(--tx)}
+.kohzeile .kn{width:58px;flex:none;text-align:right;color:var(--mu2)}
+.kohzeile.beste .kb i{background:var(--grn)}
+.kohzeile.beste .kq{color:var(--grn);font-weight:700}
 .scout.streuer{opacity:.62}
 .scout.schwach{opacity:.82}
 .scout.durchgefallen{opacity:.45;border-color:rgba(255,90,90,.3)}
@@ -400,6 +410,7 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
       <button class="tab" data-view="wache">Wache</button>
       <button class="tab" data-view="spuren">Spuren</button>
       <button class="tab" data-view="watchlist">Watchlist</button>
+      <button class="tab" data-view="kohorte">Messung</button>
       <button class="tab" data-view="regeln">Regeln</button>
     </div>
     <div class="hspace"></div>
@@ -527,6 +538,17 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
   </section>
 
   <!-- ============ REGELN ============ -->
+  <section class="view" id="view-kohorte">
+    <h2>Messung — was funktioniert wirklich?</h2>
+    <p class="sub">Alles andere in dieser App beruht auf begründeten Annahmen. <b>Meinen.</b>
+      Dass 12.000 $ Pool eine sinnvolle Grenze sind, dass 20 Minuten Haltedauer einen Dumper verraten —
+      das sind Überlegungen, keine Messungen. Sie können richtig sein. Sie können auch alle falsch sein,
+      und ohne diese Seite würde es niemand merken.</p>
+    <div id="koh-out"></div>
+    <p class="sub" style="margin-top:18px">Die Aufzeichnung läuft nur, solange die App offen ist,
+      und liegt in diesem Browser. Sie kostet nichts und gehört dir.</p>
+  </section>
+
   <section class="view" id="view-regeln">
     <div class="card rules" style="max-width:760px">
       <h3>Die Regeln, auf die das Tool ausgelegt ist</h3>
@@ -1675,6 +1697,239 @@ function sPulse(){
  * Variante, die dauerhaft nichts kostet - und es sind ohnehin DEINE
  * Daten. Der Preis: sie haengen an diesem einen Rechner.
  */
+/* ------------------------------------------------------------------ *
+ * Die Kohorte: messen statt vermuten
+ * ------------------------------------------------------------------ */
+
+/**
+ * Der ehrlichste Teil dieser App, und der einzige, der eine Frage
+ * wirklich beantworten kann.
+ *
+ * Alles andere hier beruht am Ende auf begruendeten Annahmen - meinen.
+ * Dass 12.000 Dollar Pool eine sinnvolle Grenze sind, dass 20 Minuten
+ * Haltedauer einen Dumper verraten, dass Rang 15 das Bot-Fenster ist:
+ * das sind Ueberlegungen, keine Messungen. Sie koennen richtig sein.
+ * Sie koennen auch alle falsch sein, und niemand wuerde es merken.
+ *
+ * Die Kohorte macht daraus eine Messung. Jede Stunde nimmt sie eine
+ * Handvoll frischer Coins auf - MIT allen Kennzahlen zum Zeitpunkt der
+ * Aufnahme, nicht nachtraeglich - und schaut zwei Tage lang zu. Danach
+ * steht bei jedem, was daraus geworden ist.
+ *
+ * Nach 48 Stunden hast du fuenfzig ausgewertete Faelle. Dann rechnet
+ * die App nach, welche Kennzahl am Eingang tatsaechlich mit dem
+ * Fuenffachen zusammenhing:
+ *
+ *     Marktkapital     Faelle   davon 5x
+ *     unter 10k          82       11%
+ *     10k bis 30k        64        6%
+ *     ueber 100k         28        0%
+ *
+ * Das ist etwas anderes als eine Vermutung. Und wenn KEINE Kennzahl
+ * etwas taugt, erfaehrst du auch das - nach einer Woche, statt nie.
+ *
+ * Wichtig und ehrlich: sie sammelt nur, waehrend die App offen ist.
+ * Alles liegt im Browser, es kostet nichts und gehoert dir.
+ */
+var KOHORTE = { coins: [], letzteAufnahme: 0 };
+try {
+  var kroh = localStorage.getItem("sonar_kohorte");
+  if(kroh) KOHORTE = Object.assign(KOHORTE, JSON.parse(kroh) || {});
+} catch(e){}
+
+var KOH_TAKT_MIN = 60;
+var KOH_PRO_LAUF = 12;
+var KOH_MAX = 800;
+
+function kohorteSave(){
+  try {
+    KOHORTE.coins = KOHORTE.coins.slice(-KOH_MAX);
+    localStorage.setItem("sonar_kohorte", JSON.stringify(KOHORTE));
+  } catch(e){}
+}
+
+/**
+ * Aufnehmen. Bewusst OHNE Vorauswahl - die Kohorte soll nicht die
+ * Coins enthalten, die ich fuer gut halte, sondern einen Querschnitt.
+ * Sonst misst sie am Ende nur meine eigene Vorauswahl und bestaetigt
+ * sich selbst.
+ */
+function kohorteAufnehmen(){
+  var jetzt = Date.now();
+  if(jetzt - (KOHORTE.letzteAufnahme || 0) < KOH_TAKT_MIN*60*1000) return;
+  KOHORTE.letzteAufnahme = jetzt;
+  kohorteSave();
+
+  apiFetch("/api/feed?sort=new&limit=40")
+    .then(function(j){
+      var liste = (j && (j.coins || j.items || j.feed)) || [];
+      if(!liste.length) return;
+      var drin = {};
+      KOHORTE.coins.forEach(function(c){ drin[c.mint] = true; });
+
+      var neu = liste.filter(function(c){
+        return c && c.address && c.priceUsd && !drin[c.address];
+      }).slice(0, KOH_PRO_LAUF);
+
+      neu.forEach(function(c){
+        KOHORTE.coins.push({
+          mint: c.address, symbol: c.symbol || "?", ts: jetzt,
+          preis: c.priceUsd,
+          // Der Zustand BEIM EINTRITT. Nachtraeglich ist er nicht mehr
+          // rekonstruierbar - das ist der ganze Grund, warum es diese
+          // Aufzeichnung gibt.
+          mcap: c.marketCap || null,
+          liq: c.liquidityUsd || null,
+          alter: c.ageMinutes != null ? Math.round(c.ageMinutes) : null,
+          echt: c.organicShareH1 != null ? Math.round(c.organicShareH1*100) : null,
+          holder: c.holderCount || null,
+          kvq: c.buySellRatioH1 != null ? Math.round(c.buySellRatioH1*100)/100 : null,
+          volH1: c.volumeH1 || null,
+          score: c.score != null ? c.score : null,
+          maxX: 1, ergebnis: null
+        });
+      });
+      kohorteSave();
+      renderKohorte();
+    })
+    .catch(function(){});
+}
+
+/** Nachschauen, was daraus wurde. Laeuft im selben Takt wie das Lernen. */
+function kohorteVerfolgen(){
+  var jetzt = Date.now();
+  var offen = KOHORTE.coins.filter(function(c){
+    return c.ergebnis == null && c.preis && (jetzt - c.ts) < ZIEL_STUNDEN*3600*1000;
+  }).slice(0, 30);
+  if(!offen.length){ renderKohorte(); return; }
+
+  apiFetch("/api/quote?mints=" + encodeURIComponent(offen.map(function(c){ return c.mint; }).join(",")))
+    .then(function(j){
+      if(!j || !j.ok) return;
+      var kurse = {};
+      (j.quotes||[]).forEach(function(q){ kurse[q.mint] = q.priceUsd; });
+      offen.forEach(function(c){
+        var p = kurse[c.mint];
+        var alter = jetzt - c.ts;
+        if(p && c.preis){
+          var x = p / c.preis;
+          if(x > (c.maxX||1)) c.maxX = Math.round(x*100)/100;
+        }
+        if((c.maxX||1) >= ZIEL_X) c.ergebnis = "ziel";
+        else if(!p && alter > 2*3600*1000) c.ergebnis = "tot";
+        else if(alter > ZIEL_STUNDEN*3600*1000) c.ergebnis = "verfehlt";
+      });
+      kohorteSave();
+      renderKohorte();
+    })
+    .catch(function(){});
+}
+
+/**
+ * Die Auswertung: welche Kennzahl am Eingang hing mit dem Treffer
+ * zusammen?
+ *
+ * Bewusst simpel - Baender bilden, Trefferquote je Band zeigen. Keine
+ * Regression, keine Gewichtung, nichts, was Praezision vortaeuscht, die
+ * bei fuenfzig Faellen nicht da ist. Ein Band unter acht Faellen wird
+ * gar nicht erst angezeigt: aus drei Faellen eine Prozentzahl zu machen
+ * ist die haeufigste Art, sich selbst zu belügen.
+ */
+var KOH_MIN_BAND = 8;
+
+function kohorteBaender(feld, grenzen, format){
+  var fertig = KOHORTE.coins.filter(function(c){ return c.ergebnis != null && c[feld] != null; });
+  var out = [];
+  for(var i = 0; i < grenzen.length; i++){
+    var von = i === 0 ? -Infinity : grenzen[i-1];
+    var bis = grenzen[i];
+    var drin = fertig.filter(function(c){ return c[feld] > von && c[feld] <= bis; });
+    if(drin.length < KOH_MIN_BAND) continue;
+    var treffer = drin.filter(function(c){ return c.ergebnis === "ziel"; }).length;
+    out.push({
+      label: format(von, bis),
+      n: drin.length,
+      quote: Math.round((treffer/drin.length)*100),
+      treffer: treffer
+    });
+  }
+  return out;
+}
+
+function kohorteTabelle(titel, feld, grenzen, format){
+  var b = kohorteBaender(feld, grenzen, format);
+  if(!b.length) return "";
+  var beste = b.reduce(function(a,x){ return x.quote > a.quote ? x : a; }, b[0]);
+  return '<div class="kohtab"><h4>'+esc(titel)+'</h4>'+
+    b.map(function(x){
+      var stark = x === beste && x.quote > 0;
+      var breite = Math.min(100, x.quote * 4);
+      return '<div class="kohzeile'+(stark?" beste":"")+'">'+
+        '<span class="kl">'+esc(x.label)+'</span>'+
+        '<span class="kb"><i style="width:'+breite+'%"></i></span>'+
+        '<span class="kq">'+x.quote+'%</span>'+
+        '<span class="kn">'+x.treffer+'/'+x.n+'</span>'+
+      '</div>';
+    }).join("")+'</div>';
+}
+
+function renderKohorte(){
+  var box = el("koh-out");
+  if(!box) return;
+  var alle = KOHORTE.coins.length;
+  var fertig = KOHORTE.coins.filter(function(c){ return c.ergebnis != null; });
+  var treffer = fertig.filter(function(c){ return c.ergebnis === "ziel"; }).length;
+
+  var kopf = '<p class="sub">Jede Stunde nimmt die App einen <b>Querschnitt</b> frischer Coins auf — '+
+    'ohne Vorauswahl, sonst würde sie am Ende nur meine eigenen Annahmen bestätigen. '+
+    'Zwei Tage später steht bei jedem, was daraus wurde. '+
+    '<b>Aufgenommen: '+alle+' · ausgewertet: '+fertig.length+' · davon '+ZIEL_X+'×: '+treffer+'</b></p>';
+
+  if(fertig.length < 20){
+    return void (box.innerHTML = kopf +
+      '<div class="empty">Noch zu wenig ausgewertet.<br>'+
+      '<span class="mu2">Die erste belastbare Auswertung gibt es nach etwa 48 Stunden mit offener App. '+
+      'Vorher wäre jede Prozentzahl geraten.</span></div>');
+  }
+
+  var basis = Math.round((treffer/fertig.length)*100);
+  var html = kopf +
+    '<p class="sub"><b style="color:var(--yel)">Die Grundquote liegt bei '+basis+'%.</b> '+
+    'Das ist die Zahl, die jede Auswahlregel schlagen muss. Ein Filter, der auf '+basis+'% kommt, '+
+    'leistet nichts — er zeichnet den Markt nach. '+
+    'Und zur Einordnung: bei 5 € Einsatz und '+(5*ZIEL_X)+' € Ziel brauchst du grob <b>20%</b>, um überhaupt bei null zu landen.</p>';
+
+  html += kohorteTabelle("Marktkapital beim Eintritt", "mcap",
+    [10000, 30000, 100000, 500000, Infinity],
+    function(v,b){ return b === Infinity ? "über 500k" : (v === -Infinity ? "unter " : "") + money(b) + (v === -Infinity ? "" : " und darunter"); });
+
+  html += kohorteTabelle("Anteil echten Volumens", "echt",
+    [5, 20, 50, 101],
+    function(v,b){ return b > 100 ? "über 50%" : (v === -Infinity ? "unter " : "bis ") + b + "%"; });
+
+  html += kohorteTabelle("Liquidität beim Eintritt", "liq",
+    [5000, 15000, 50000, Infinity],
+    function(v,b){ return b === Infinity ? "über 50k" : (v === -Infinity ? "unter " : "bis ") + money(b); });
+
+  html += kohorteTabelle("Käufe je Verkauf", "kvq",
+    [0.8, 1.4, 3, Infinity],
+    function(v,b){ return b === Infinity ? "über 3,0" : (v === -Infinity ? "unter " : "bis ") + String(b).replace(".", ","); });
+
+  html += kohorteTabelle("Alter beim Eintritt", "alter",
+    [30, 180, 720, Infinity],
+    function(v,b){ return b === Infinity ? "über 12 Std" : (v === -Infinity ? "unter " : "bis ") + age(b); });
+
+  html += kohorteTabelle("Unsere Vorprüfung", "score",
+    [35, 50, 70, 101],
+    function(v,b){ return b > 100 ? "über 70" : (v === -Infinity ? "unter " : "bis ") + b; });
+
+  html += '<p class="sub" style="margin-top:14px">Grün markiert ist jeweils das stärkste Band. '+
+    'Bänder mit weniger als '+KOH_MIN_BAND+' Fällen werden weggelassen — aus drei Fällen eine Prozentzahl zu machen '+
+    'ist die häufigste Art, sich selbst zu belügen.</p>';
+
+  box.innerHTML = html;
+}
+
 var ROSTER = { wallets: {}, geprueft: 0 };
 try {
   var rroh = localStorage.getItem("sonar_roster");
@@ -2313,6 +2568,14 @@ el("s-hand").addEventListener("click", function(){
 renderAutoInfo();
 setInterval(learnFollowUp, 3*60*1000);
 setTimeout(learnFollowUp, 8000);
+
+// Die Messung laeuft unabhaengig von allem anderen mit: aufnehmen im
+// Stundentakt, nachschauen alle vier Minuten. Sie braucht keinen
+// Kundschafter und keine Wallet - nur eine offene App.
+setTimeout(function(){ kohorteAufnehmen(); kohorteVerfolgen(); }, 12000);
+setInterval(kohorteAufnehmen, 10*60*1000);
+setInterval(kohorteVerfolgen, 4*60*1000);
+renderKohorte();
 
 el("s-test").addEventListener("click", function(){
   // Das Fenster kommt IMMER - unabhaengig davon, ob das Betriebssystem
