@@ -71,6 +71,42 @@ function gewichtVon(term) {
  * "Sache". Erst wenn es nicht greift, kommt diese Einteilung.
  */
 
+/**
+ * Zwei kurze Namenslisten.
+ *
+ * Reine Formregeln kommen nur bis hierhin: "Hugging Face" sieht aus wie
+ * Vorname Nachname, ist aber eine Firma. "Washington" und
+ * "Pennsylvania" sind Orte, ohne dass ihnen das anzusehen waere. Live
+ * gemessen landete das eine bei den Personen, das andere bei den
+ * Ereignissen.
+ *
+ * Solche Faelle loest man nicht mit einer klugeren Regel, sondern mit
+ * einer kurzen Liste der haeufigsten Namen. Sie muss nicht vollstaendig
+ * sein - sie muss nur die abfangen, die staendig vorkommen.
+ */
+const MARKEN = new Set([
+  "microsoft", "google", "alphabet", "apple", "amazon", "meta", "facebook", "instagram",
+  "tesla", "netflix", "nvidia", "openai", "anthropic", "disney", "sony", "samsung",
+  "xbox", "playstation", "nintendo", "tiktok", "reddit", "youtube", "spotify", "uber",
+  "spacex", "starlink", "boeing", "intel", "amd", "oracle", "ibm", "adobe", "paypal",
+  "coinbase", "binance", "robinhood", "hugging face", "deepseek", "mistral", "perplexity",
+  "walmart", "costco", "nike", "adidas", "mcdonald", "starbucks", "pfizer", "moderna",
+]);
+
+const ORTE = new Set([
+  // Laender
+  "usa", "america", "china", "russia", "ukraine", "israel", "gaza", "iran", "india",
+  "japan", "germany", "france", "britain", "england", "italy", "spain", "canada",
+  "mexico", "brazil", "australia", "korea", "taiwan", "nepal", "pakistan", "turkey",
+  "egypt", "nigeria", "poland", "sweden", "norway", "greece", "syria", "yemen",
+  // US-Staaten und grosse Staedte
+  "washington", "california", "texas", "florida", "pennsylvania", "ohio", "michigan",
+  "georgia", "arizona", "nevada", "colorado", "oregon", "virginia", "alaska", "hawaii",
+  "new york", "los angeles", "chicago", "houston", "boston", "seattle", "denver",
+  "miami", "atlanta", "detroit", "philadelphia", "phoenix", "dallas", "san francisco",
+  "london", "paris", "berlin", "moscow", "beijing", "tokyo", "delhi", "dubai", "rome",
+]);
+
 const ORT_ENDUNG = /\b(City|River|Island|Bay|County|Valley|Beach|Lake|Mountain|Desert|Sea|Ocean|Park|Bridge|Airport|Stadium|Province|District|State)$/i;
 const MARKE_ENDUNG = /\b(Inc|Corp|Labs?|Studios?|Games|Media|Group|Holdings|Technologies|Systems|Motors|Airlines|Bank)$/i;
 
@@ -96,7 +132,12 @@ function wirktWieMarke(wort) {
 
 function artVon(wort, beispiel) {
   const w = String(wort || "").trim();
+  const klein = w.toLowerCase();
   const satz = String(beispiel || "");
+
+  // Die Listen zuerst: sie sind sicher, die Formregeln sind Schaetzung.
+  if (MARKEN.has(klein)) return { key: "marke", label: "Marken und Produkte" };
+  if (ORTE.has(klein)) return { key: "ort", label: "Orte" };
 
   if (wirktWieMarke(w)) return { key: "marke", label: "Marken und Produkte" };
   if (ORT_ENDUNG.test(w)) return { key: "ort", label: "Orte" };
