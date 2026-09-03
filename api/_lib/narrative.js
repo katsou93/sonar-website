@@ -113,6 +113,32 @@ const SECTORS = [
     parts: ["football", "soccer", "olympic", "wrestl", "basket", "hockey", "cricket", "marathon", "messi", "ronaldo"],
   },
   {
+    // Fehlte bisher, obwohl es eine der groessten Schubladen ist: jede
+    // Marktbewegung von Bitcoin oder Solana zieht sofort Coins nach
+    // sich, die sich daran haengen.
+    key: "krypto",
+    label: "Krypto und Markt",
+    words: ["btc", "eth", "sol", "xrp", "etf", "defi", "nft", "dex", "cex", "hodl", "bull", "bear"],
+    parts: ["bitcoin", "ethereum", "solana", "binance", "coinbase", "crypto", "blockchain", "stablecoin", "airdrop", "staking"],
+  },
+  {
+    // Filme, Serien, Spiele, Musik. Ein Trailer oder eine Premiere
+    // erzeugt innerhalb von Stunden ein Dutzend Coins.
+    key: "popkultur",
+    label: "Film, Serie und Spiel",
+    words: ["movie", "film", "serie", "game", "gaming", "song", "album", "tour", "trailer", "netflix", "disney", "marvel"],
+    parts: ["hogwarts", "potter", "starwars", "pokemon", "nintendo", "playstation", "minecraft", "roblox", "fortnite", "squidgame", "premiere", "cinema", "concert", "grammy", "oscar"],
+  },
+  {
+    // Weltlage: Orte, Konflikte, Katastrophen. Diese Begriffe tragen am
+    // schnellsten - eine Nachricht aus einem Land, das gestern niemand
+    // erwaehnt hat, ist per Definition neu.
+    key: "welt",
+    label: "Weltlage und Orte",
+    words: ["war", "peace", "quake", "storm", "flood", "fire", "riot", "coup", "border", "strike", "summit"],
+    parts: ["protest", "earthquake", "hurricane", "wildfire", "tsunami", "sanction", "ceasefire", "conflict", "invasion", "evacuat", "curfew"],
+  },
+  {
     key: "mystik",
     label: "Religion und Mystik",
     words: ["god", "jesus", "satan", "angel", "devil", "buddha", "karma", "zen", "soul", "cult", "omen"],
