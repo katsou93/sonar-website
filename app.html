@@ -1859,15 +1859,22 @@ function ladeHeute(){
       var ohne = j.ohneKategorie || [];
       if(ohne.length){
         html += '<div class="hzblock neu"><h3>Neu und noch ohne Schublade</h3>'+
-          '<p class="sub">Diese Wörter passen in keine bekannte Kategorie — und genau deshalb sind sie '+
+          '<p class="sub">Diese Begriffe passen in keine Kategorie — und genau deshalb sind sie oft '+
           'die interessantesten. <b>Hund und Trump stehen jeden Tag da. Ein neuer Eigenname nicht.</b> '+
-          'Wenn hier etwas mit drei Quellen auftaucht, ist heute etwas passiert.</p>'+
+          'Wenn hier etwas mit drei Quellen auftaucht, ist heute etwas passiert.'+
+          // Ehrlich dazusagen, was der Filter weggenommen hat. Sonst
+          // sieht eine kurze Liste nach einem stillen Tag aus, obwohl
+          // in Wahrheit dreissig nackte Zeichenketten aussortiert wurden.
+          (j.ausgesiebt ? ' <span class="mu2">'+j.ausgesiebt+' weitere ohne Kontext wurden ausgesiebt — '+
+            'eine Quelle, keine Schlagzeile, nicht beurteilbar.</span>' : '')+
+          '</p>'+
           '<div class="hzwoerter">'+ ohne.slice(0,14).map(hzWort).join("") +'</div></div>';
       }
 
       (j.kategorien||[]).forEach(function(k){
         html += '<div class="hzblock"><h3>'+esc(k.label)+
-          ' <span class="mu2" style="font-weight:400;font-size:12px">'+k.anzahl+' Begriffe</span></h3>'+
+          ' <span class="mu2" style="font-weight:400;font-size:12px">'+k.anzahl+
+          (k.anzahl === 1 ? ' Begriff' : ' Begriffe')+'</span></h3>'+
           '<div class="hzwoerter">'+ k.begriffe.map(hzWort).join("") +'</div></div>';
       });
 
