@@ -352,6 +352,16 @@ const ANFANG_WORT = new Set([
  * ist klein. "Gloria Steinem" bleibt zusammen, "deaths" faellt weg,
  * ohne dass man eine Liste generischer Substantive pflegen muesste.
  */
+/**
+ * Woerter, die fuer sich genommen nichts sind, in einem Namen aber
+ * dazugehoeren. "New" ist ein Stoppwort - "New York" ist ein Ort. Ohne
+ * diese Ausnahme blieb live nur "York" uebrig.
+ */
+const NAMENSTEIL = new Set([
+  "new", "old", "big", "great", "north", "south", "east", "west", "upper", "lower",
+  "san", "santa", "saint", "los", "las", "van", "von", "der", "del", "la", "le", "el",
+]);
+
 function entitiesFromTitle(satz) {
   const roh = String(satz || "").trim();
   if (!roh) return [];
@@ -379,14 +389,22 @@ function entitiesFromTitle(satz) {
   };
 
   for (let i = 0; i < woerter.length; i++) {
-    const sauber = woerter[i].replace(/[^A-Za-zÄÖÜäöüß'-]/g, "");
+    // Besitzform abschneiden: "China's" und "China" sind dasselbe Thema
+    // und standen live als zwei Eintraege nebeneinander.
+    const sauber = woerter[i].replace(/[^A-Za-zÄÖÜäöüß'-]/g, "").replace(/['’]s$/i, "");
     const klein = sauber.toLowerCase();
+    // ANFANG_WORT gilt NUR am Satzanfang - das ist der Sinn der Liste.
+    // Vorher wurde sie ueberall angewendet, und dadurch zerfiel "New
+    // York" zu "York": "new" steht drin, weil Saetze damit anfangen,
+    // nicht weil es in einem Namen stoert.
     const istName =
       sauber.length >= 3 &&
       sauber.length <= 20 &&
       /^[A-ZÄÖÜ][a-zäöüß'-]/.test(sauber) &&
-      !ANFANG_WORT.has(klein) &&
-      !STOPWORDS.has(klein) &&
+      (i > 0 || !ANFANG_WORT.has(klein)) &&
+      // Ein Stoppwort darf mitten in einem Namen stehen, wenn direkt
+      // ein weiterer Name folgt - "New York", "San Francisco".
+      (!STOPWORDS.has(klein) || (NAMENSTEIL.has(klein) && /^[A-ZÄÖÜ][a-z]/.test((woerter[i + 1] || "").replace(/[^A-Za-z]/g, "")))) &&
       !NOISE.has(klein);
 
     // Bei Title Case darf nur der Satzanfang zaehlen - dort steht das
