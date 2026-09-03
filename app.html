@@ -299,6 +299,9 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
 .thtag{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;
   padding:2px 7px;border-radius:4px;background:rgba(20,241,149,.16);color:var(--grn)}
 .thtag.alt{background:rgba(255,255,255,.06);color:var(--mu);text-transform:none;letter-spacing:0}
+.thtag.kreuz{background:rgba(255,197,49,.18);color:var(--yel)}
+.thzeile.gekreuzt{border-color:var(--yel);background:rgba(255,197,49,.06);
+  box-shadow:0 0 0 1px rgba(255,197,49,.12)}
 .thcoins{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
 .thcoin{font-family:var(--mono);font-size:11.5px;padding:3px 8px;border-radius:5px;cursor:pointer;
   background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--tx)}
@@ -1817,7 +1820,9 @@ function themenSchnappschuss(){
       });
       THEMEN.schnapp.push({ ts: jetzt, zahl: zaehler, coins: traeger, n: liste.length });
       themenSave();
-      renderThemen();
+      // Erst die Aussenwelt, dann zeichnen - sonst fehlt beim ersten
+      // Durchgang genau die Information, auf die es ankommt.
+      aussenweltHolen().then(renderThemen);
     })
     .catch(function(){});
 }
@@ -1879,13 +1884,108 @@ function themenAufsteiger(){
     var alt = basis[w] || 0;
     var zuwachs = nun - alt;
     if(zuwachs < 2) return;
+    var d = draussenGefunden(w);
     out.push({
       wort: w, jetzt: nun, vorher: alt, zuwachs: zuwachs,
       neu: alt === 0,
+      draussen: !!d,
+      quellen: d ? (d.quellen||[]).map(function(q){ return QUELL_NAME[q] || q; }) : [],
       coins: jetzt.coins[w] || []
     });
   });
-  return out.sort(function(a,b){ return (b.neu?100:0)+b.zuwachs - ((a.neu?100:0)+a.zuwachs); }).slice(0, 12);
+  // Gekreuzte Themen immer zuerst - sie sind eine andere Kategorie,
+  // nicht nur ein hoeherer Wert derselben.
+  return out.sort(function(a,b){
+    var pa = (a.draussen?1000:0) + (a.neu?100:0) + a.zuwachs;
+    var pb = (b.draussen?1000:0) + (b.neu?100:0) + b.zuwachs;
+    return pb - pa;
+  }).slice(0, 12);
+}
+
+/**
+ * Die Kreuzung - und damit der eigentliche Punkt des Ganzen.
+ *
+ * Bis hierher lagen zwei Listen nebeneinander, und du musstest sie im
+ * Kopf abgleichen: hier die Woerter, die gerade in frischen Coins
+ * aufsteigen, dort die Themen aus Reddit, Trends und den Nachrichten.
+ *
+ * Jede der beiden allein ist schwach:
+ *
+ *   Nur in den Launches  Zwoelf Coins mit demselben Wort koennen ein
+ *                        Bot sein, der dieselbe Idee zwoelfmal mintet.
+ *                        Da ist keine Nachfrage, nur Angebot.
+ *   Nur draussen         Ein Thema bei Reddit ohne einen einzigen Coin
+ *                        heisst: noch hat niemand einen gemacht. Kann
+ *                        eine Chance sein - kaufen kannst du nichts.
+ *
+ * Beides zusammen ist etwas ganz anderes: eine Geschichte, ueber die
+ * geredet wird, UND Ersteller, die darauf reagieren. Genau an dieser
+ * Stelle entsteht ein Meme-Coin, der laeuft.
+ */
+var AUSSEN = { begriffe: [], geholt: 0 };
+
+function aussenweltHolen(){
+  if(Date.now() - AUSSEN.geholt < 9*60*1000) return Promise.resolve();
+  return apiFetch("/api/feed?sort=heat&limit=8&buzz=1")
+    .then(function(j){
+      var o = (j && j.outside) || {};
+      AUSSEN.begriffe = (o.terms||[]).map(function(t){
+        return { wort: String(t.term||"").toLowerCase(), quellen: t.sources || [] };
+      });
+      AUSSEN.geholt = Date.now();
+    })
+    .catch(function(){});
+}
+
+/** Kommt dieses Wort auch draussen vor? Und wenn ja, wo? */
+function draussenGefunden(wort){
+  var w = String(wort||"").toLowerCase();
+  if(w.length < 4) return null;
+  for(var i = 0; i < AUSSEN.begriffe.length; i++){
+    var b = AUSSEN.begriffe[i];
+    // Teiltreffer erlaubt: "jimothyraccoon" im Coinnamen soll auf
+    // "jimothy" von Reddit passen. Aber nur in eine Richtung und erst
+    // ab fuenf Zeichen - sonst passt "cat" auf alles.
+    if(b.wort === w) return b;
+    if(w.length >= 5 && b.wort.length >= 5 && (b.wort.indexOf(w) === 0 || w.indexOf(b.wort) === 0)) return b;
+  }
+  return null;
+}
+
+var QUELL_NAME = { reddit: "Reddit", trends_us: "Google Trends", trends_de: "Trends DE",
+  news: "Nachrichten", hn: "Hacker News", wiki: "Wikipedia" };
+
+/** Ein gekreuztes Thema ist zeitkritisch - das gehoert gemeldet, nicht nur angezeigt. */
+var THEMA_GEMELDET = {};
+try {
+  var tgroh = localStorage.getItem("sonar_thema_gemeldet");
+  if(tgroh) THEMA_GEMELDET = JSON.parse(tgroh) || {};
+} catch(e){}
+
+function themaAlarm(t){
+  if(THEMA_GEMELDET[t.wort]) return;
+  if(!notifyWanted()) return;
+  THEMA_GEMELDET[t.wort] = Date.now();
+  try {
+    var grenze = Date.now() - 24*3600*1000, sauber = {};
+    Object.keys(THEMA_GEMELDET).forEach(function(k){ if(THEMA_GEMELDET[k] > grenze) sauber[k] = THEMA_GEMELDET[k]; });
+    THEMA_GEMELDET = sauber;
+    localStorage.setItem("sonar_thema_gemeldet", JSON.stringify(THEMA_GEMELDET));
+  } catch(e){}
+
+  var bester = (t.coins||[]).filter(function(c){ return c.symbol; })[0];
+  popAlert({
+    kind: "cluster",
+    titel: "🌊 Neues Thema: " + t.wort,
+    symbol: bester ? bester.symbol : t.wort.toUpperCase(),
+    mint: bester ? bester.mint : "",
+    plain: "Thema " + t.wort + " — " + t.jetzt + " neue Coins, auch bei " + (t.quellen||[]).join(", "),
+    info: '<b>' + esc(t.wort) + '</b> steigt gleichzeitig an zwei Stellen auf:<br>' +
+          '<b>' + t.jetzt + ' frische Coins</b> tragen das Wort (vorher ' + t.vorher + ')<br>' +
+          '<b style="color:var(--grn)">Und draußen: ' + esc((t.quellen||[]).join(" · ")) + '</b><br>' +
+          '<span class="mu2">Eine Geschichte, über die geredet wird, und Ersteller, die darauf reagieren. ' +
+          'Genau dort entsteht ein Coin, der läuft — prüfe die Kandidaten im Tab Wache.</span>'
+  });
 }
 
 function renderThemen(){
@@ -1916,10 +2016,16 @@ function renderThemen(){
       return '<span class="thcoin" data-mint="'+esc(c.mint)+'">'+esc(c.symbol)+
         (c.mcap ? ' <span class="mu2">'+money(c.mcap)+'</span>' : '')+'</span>';
     }).join("");
-    return '<div class="thzeile'+(t.neu?" neu":"")+'">'+
+    if(t.draussen) themaAlarm(t);
+    return '<div class="thzeile'+(t.neu?" neu":"")+(t.draussen?" gekreuzt":"")+'">'+
       '<div class="thkopf"><b>'+esc(t.wort)+'</b>'+
         (t.neu ? '<span class="thtag">neu</span>' : '<span class="thtag alt">'+t.vorher+' → '+t.jetzt+'</span>')+
+        (t.draussen ? '<span class="thtag kreuz">auch draußen</span>' : '')+
         '<span class="mu2">'+t.jetzt+' frische Coins tragen das Wort</span></div>'+
+      (t.draussen
+        ? '<div class="det" style="color:var(--grn);margin-top:5px">Läuft gleichzeitig bei: <b>'+
+          esc(t.quellen.join(" · "))+'</b> — dahinter steht eine echte Geschichte, kein Bot.</div>'
+        : '')+
       '<div class="thcoins">'+coins+'</div>'+
     '</div>';
   }).join("") +
