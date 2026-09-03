@@ -87,7 +87,7 @@ module.exports = async function handler(req, res) {
     const key = stamm(wort);
     const vorhanden = zusammen.get(key);
     if (!vorhanden) {
-      zusammen.set(key, { term: wort, sources: (term.sources || []).slice(), traffic: term.traffic || 0 });
+      zusammen.set(key, { term: wort, sources: (term.sources || []).slice(), traffic: term.traffic || 0, beispiel: term.beispiel || null });
       continue;
     }
     // Die kuerzere Schreibweise gewinnt - "film" liest sich besser als
@@ -97,6 +97,7 @@ module.exports = async function handler(req, res) {
       if (vorhanden.sources.indexOf(q) === -1) vorhanden.sources.push(q);
     });
     vorhanden.traffic = Math.max(vorhanden.traffic, term.traffic || 0);
+    if (!vorhanden.beispiel && term.beispiel) vorhanden.beispiel = term.beispiel;
   }
 
   for (const term of zusammen.values()) {
@@ -111,6 +112,9 @@ module.exports = async function handler(req, res) {
       quellen: term.sources || [],
       erwaehnungen: (term.sources || []).length,
       reichweite: term.traffic || 0,
+      // Die Schlagzeile. Ein nacktes Wort kann man nicht beurteilen -
+      // mit dem Satz dahinter dauert es eine Sekunde.
+      beispiel: term.beispiel || null,
       gewicht: gewichtVon(term),
     };
 
