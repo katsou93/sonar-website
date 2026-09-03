@@ -302,6 +302,23 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
 .thtag.kreuz{background:rgba(255,197,49,.18);color:var(--yel)}
 .thzeile.gekreuzt{border-color:var(--yel);background:rgba(255,197,49,.06);
   box-shadow:0 0 0 1px rgba(255,197,49,.12)}
+.hzblock{margin-bottom:22px;padding-bottom:16px;border-bottom:1px solid var(--border)}
+.hzblock:last-of-type{border-bottom:none}
+.hzblock h3{font-size:14px;margin:0 0 8px}
+.hzblock.neu{padding:14px 16px;border:1px solid rgba(20,241,149,.32);border-radius:10px;
+  background:rgba(20,241,149,.045)}
+.hzwoerter{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}
+.hzw{display:inline-flex;align-items:center;gap:7px;padding:5px 10px;border-radius:7px;cursor:pointer;
+  background:rgba(255,255,255,.04);border:1px solid var(--border);font-size:13px;color:var(--mu)}
+.hzw i{font-style:normal;font-family:var(--mono);font-size:10px;padding:1px 5px;border-radius:4px;
+  background:rgba(255,255,255,.07);color:var(--mu2)}
+.hzw:hover{border-color:var(--grn);color:var(--tx)}
+.hzw.mittel{color:var(--tx);border-color:rgba(255,197,49,.3)}
+.hzw.mittel i{background:rgba(255,197,49,.16);color:var(--yel)}
+.hzw.stark{color:var(--tx);font-weight:600;border-color:var(--grn);background:rgba(20,241,149,.08)}
+.hzw.stark i{background:rgba(20,241,149,.2);color:var(--grn)}
+.hztreffer{width:100%;margin-top:10px;padding:10px 12px;border-radius:8px;font-size:12.5px;
+  line-height:1.6;background:rgba(255,255,255,.03);border:1px solid var(--border)}
 .thcoins{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
 .thcoin{font-family:var(--mono);font-size:11.5px;padding:3px 8px;border-radius:5px;cursor:pointer;
   background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--tx)}
@@ -430,6 +447,7 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
       <button class="tab" data-view="wache">Wache</button>
       <button class="tab" data-view="spuren">Spuren</button>
       <button class="tab" data-view="watchlist">Watchlist</button>
+      <button class="tab" data-view="heute">Heute</button>
       <button class="tab" data-view="kohorte">Messung</button>
       <button class="tab" data-view="regeln">Regeln</button>
     </div>
@@ -567,6 +585,20 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
   </section>
 
   <!-- ============ REGELN ============ -->
+  <section class="view" id="view-heute">
+    <h2>Stichworte des Tages</h2>
+    <p class="sub">Worüber wird gerade geredet — sortiert nach denselben Schubladen, in denen auch
+      Coins stehen. Sechs Quellen: Reddit, Google Trends (US und DE), Google News, Hacker News, Wikipedia.
+      <b>Die Zahl neben jedem Wort ist die einzige, die wirklich zählt:</b> von wie vielen
+      unabhängigen Quellen es kommt. Ein Begriff, der gleichzeitig bei Reddit und in den Nachrichten
+      steht, ist etwas anderes als einer aus einer einzelnen Wikipedia-Liste.</p>
+    <div class="row" style="margin:14px 0">
+      <button class="btn btn-p" id="hz-load">Tag laden</button>
+      <span id="hz-stand" class="mu2" style="font-size:12px"></span>
+    </div>
+    <div id="hz-out"></div>
+  </section>
+
   <section class="view" id="view-kohorte">
     <h2>Messung — was funktioniert wirklich?</h2>
     <p class="sub">Alles andere in dieser App beruht auf begründeten Annahmen. <b>Meinen.</b>
@@ -1782,6 +1814,147 @@ function sPulse(){
  * Dafuer braucht es nur eines, das bisher fehlte: ein Gedaechtnis.
  * Alle paar Minuten eine Momentaufnahme, und dann vergleichen.
  */
+/* ------------------------------------------------------------------ *
+ * Stichworte des Tages
+ * ------------------------------------------------------------------ */
+
+/**
+ * Der Tag, einsortiert.
+ *
+ * Bisher kam die Aussenwelt als flache Liste heraus: Nepal, Hogwarts,
+ * Powell, Waschbaer, alles durcheinander. Wer daraus etwas ableiten
+ * wollte, musste die Einordnung im Kopf machen.
+ *
+ * Auf pump.fun filterst du aber nach Meme, Politik, Tieren, KI - in
+ * diesen Schubladen denkt der Markt. Also werden die Begriffe durch
+ * dasselbe Lexikon geschickt, mit dem auch Coin-Namen einsortiert
+ * werden. Ein Begriff ist ja nichts anderes als der Name, den ein Coin
+ * morgen tragen wird.
+ */
+function ladeHeute(){
+  var box = el("hz-out");
+  if(!box) return;
+  box.innerHTML = '<div class="empty">Sechs Quellen werden abgefragt …</div>';
+
+  apiFetch("/api/today")
+    .then(function(j){
+      if(!j || !j.ok){ box.innerHTML = '<div class="err">Konnte nicht geladen werden.</div>'; return; }
+      var stand = el("hz-stand");
+      if(stand) stand.textContent = j.quellenOk + " von " + j.quellenGesamt + " Quellen · Stand " + uhr(j.stand);
+
+      if(j.fehler){ box.innerHTML = '<div class="err">'+esc(j.fehler)+'</div>'; return; }
+
+      var html = "";
+
+      // Die neuen Namen zuerst - und das ist kein Layoutgeschmack,
+      // sondern der Kern der Sache. Ein Wort, das in KEINE Schublade
+      // passt, ist per Definition eines, das es gestern noch nicht gab.
+      // "Hund" und "Trump" stehen jeden Tag da. "Jimothy" nicht.
+      var ohne = j.ohneKategorie || [];
+      if(ohne.length){
+        html += '<div class="hzblock neu"><h3>Neu und noch ohne Schublade</h3>'+
+          '<p class="sub">Diese Wörter passen in keine bekannte Kategorie — und genau deshalb sind sie '+
+          'die interessantesten. <b>Hund und Trump stehen jeden Tag da. Ein neuer Eigenname nicht.</b> '+
+          'Wenn hier etwas mit drei Quellen auftaucht, ist heute etwas passiert.</p>'+
+          '<div class="hzwoerter">'+ ohne.slice(0,14).map(hzWort).join("") +'</div></div>';
+      }
+
+      (j.kategorien||[]).forEach(function(k){
+        html += '<div class="hzblock"><h3>'+esc(k.label)+
+          ' <span class="mu2" style="font-weight:400;font-size:12px">'+k.anzahl+' Begriffe</span></h3>'+
+          '<div class="hzwoerter">'+ k.begriffe.map(hzWort).join("") +'</div></div>';
+      });
+
+      if(!html) html = '<div class="empty">Die Quellen liefern gerade nichts Auswertbares.</div>';
+
+      html += '<p class="sub" style="margin-top:20px"><b style="color:var(--yel)">So benutzt du die Seite:</b> '+
+        'ein Wort mit drei oder mehr Quellen ist ein echtes Thema. Klick darauf — die App sucht dann '+
+        'im Scanner nach Coins, die es tragen. Findet sie welche, ist die Geschichte schon auf der Kette. '+
+        'Findet sie keine, hat noch niemand einen gemacht.</p>';
+
+      box.innerHTML = html;
+      box.querySelectorAll("[data-wort]").forEach(function(n){
+        n.addEventListener("click", function(){ zeigeCoinsZu(n.getAttribute("data-wort"), n); });
+      });
+    })
+    .catch(function(e){
+      if(e && e.locked) return;
+      box.innerHTML = '<div class="err">Netzwerkfehler: '+esc(e.message)+'</div>';
+    });
+}
+
+/**
+ * Gibt es zu diesem Stichwort schon Coins?
+ *
+ * Die Antwort ist in beide Richtungen nützlich, und das ist der Punkt:
+ *
+ *   Es gibt welche   Die Geschichte ist schon auf der Kette. Jetzt
+ *                    zählt nur noch, welcher davon der beste ist -
+ *                    und ob du früh genug bist.
+ *   Es gibt keine    Noch hat niemand einen gemacht. Das ist der
+ *                    früheste denkbare Moment - und zugleich der
+ *                    unsicherste, weil vielleicht nie einer kommt.
+ */
+function zeigeCoinsZu(wort, knoten){
+  var alt = document.getElementById("hz-treffer");
+  if(alt) alt.remove();
+  var kasten = document.createElement("div");
+  kasten.id = "hz-treffer";
+  kasten.className = "hztreffer";
+  kasten.innerHTML = '<span class="mu2">Suche Coins mit „'+esc(wort)+'" …</span>';
+  knoten.parentNode.after(kasten);
+
+  apiFetch("/api/feed?sort=new&limit=60")
+    .then(function(j){
+      var liste = (j && (j.coins || j.items || j.feed)) || [];
+      var w = String(wort||"").toLowerCase();
+      var treffer = liste.filter(function(c){
+        var t = (String(c.name||"") + " " + String(c.symbol||"")).toLowerCase();
+        return t.indexOf(w) !== -1;
+      }).slice(0, 8);
+
+      if(!treffer.length){
+        kasten.innerHTML = '<b>„'+esc(wort)+'" — noch kein Coin.</b><br>'+
+          '<span class="mu2">Unter den 60 frischesten Launches trägt keiner dieses Wort. '+
+          'Das ist der früheste denkbare Moment — und zugleich der unsicherste, '+
+          'weil vielleicht nie einer kommt.</span>';
+        return;
+      }
+      kasten.innerHTML = '<b>'+treffer.length+' Coin'+(treffer.length>1?"s":"")+' mit „'+esc(wort)+'"</b>'+
+        '<div class="thcoins">'+ treffer.map(function(c){
+          return '<span class="thcoin" data-mint="'+esc(c.address)+'">'+esc(c.symbol||"?")+
+            (c.marketCap ? ' <span class="mu2">'+money(c.marketCap)+'</span>' : '')+
+            (c.score != null ? ' <span class="mu2">· '+c.score+'</span>' : '')+'</span>';
+        }).join("") +'</div>'+
+        '<span class="mu2">Klick auf einen Coin öffnet die volle Prüfung.</span>';
+      kasten.querySelectorAll("[data-mint]").forEach(function(x){
+        x.addEventListener("click", function(){
+          document.querySelector('.tab[data-view="scanner"]').click();
+          window.scrollTo(0,0);
+          scan(x.getAttribute("data-mint"));
+        });
+      });
+    })
+    .catch(function(){ kasten.innerHTML = '<span class="mu2">Suche fehlgeschlagen.</span>'; });
+}
+
+function hzWort(b){
+  // Drei Quellen sind die Schwelle, ab der ein Begriff nicht mehr
+  // Zufall sein kann. Zwei koennen dieselbe Meldung sein, die zweimal
+  // durchlaeuft.
+  var stark = b.erwaehnungen >= 3;
+  var mittel = b.erwaehnungen === 2;
+  return '<span class="hzw'+(stark?" stark":mittel?" mittel":"")+'" data-wort="'+esc(b.wort)+'" '+
+    'title="'+esc((b.quellen||[]).join(", "))+'">'+
+    esc(b.wort)+'<i>'+b.erwaehnungen+'</i></span>';
+}
+
+function uhr(ts){
+  if(!ts) return "";
+  var d = new Date(ts);
+  return ("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2);
+}
+
 var THEMEN = { schnapp: [], letzte: 0 };
 try {
   var troh = localStorage.getItem("sonar_themen");
@@ -2991,6 +3164,7 @@ setTimeout(function(){ kohorteAufnehmen(); kohorteVerfolgen(); }, 12000);
 // Themen: haeufiger als die Kohorte, weil eine Welle in einer Stunde
 // entsteht und vergeht. Acht Minuten sind der Kompromiss zwischen
 // "merkt es rechtzeitig" und "fragt sich nicht dumm und daemlich".
+if(el("hz-load")) el("hz-load").addEventListener("click", ladeHeute);
 setTimeout(function(){ themenSchnappschuss(); }, 4000);
 setInterval(themenSchnappschuss, TH_TAKT_MIN*60*1000);
 renderThemen();
