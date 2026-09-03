@@ -153,14 +153,25 @@ module.exports = async function handler(req, res) {
     .filter((k) => k.begriffe.some((b) => b.erwaehnungen >= 2))
     .sort((a, b) => b.punkte - a.punkte);
 
-  ohne.sort((a, b) => b.gewicht - a.gewicht);
+  // Was ohne Kontext dasteht, taugt nicht.
+  //
+  // Ein Begriff aus einer einzigen Quelle OHNE Schlagzeile ist eine
+  // nackte Zeichenkette - man kann nicht beurteilen, ob dahinter etwas
+  // steckt. Live standen zwanzig solcher Eintraege in der Liste und
+  // machten die ganze Seite unbrauchbar. Entweder mehrere Quellen
+  // bestaetigen das Thema, oder es gibt wenigstens den Satz dazu.
+  const brauchbar = ohne.filter((b) => b.erwaehnungen >= 2 || b.beispiel);
+  brauchbar.sort((a, b) => b.gewicht - a.gewicht);
 
   // Zehn Minuten cachen. Die Außenwelt ändert sich nicht im
   // Sekundentakt, und jede Abfrage zieht an sechs fremden Servern.
   send(res, 200, {
     ok: true,
     kategorien: kategorien,
-    ohneKategorie: ohne.slice(0, 20),
+    ohneKategorie: brauchbar.slice(0, 16),
+    // Ehrlich dazusagen, wie viel weggefallen ist - sonst sieht eine
+    // kurze Liste nach einem stillen Tag aus statt nach einem Filter.
+    ausgesiebt: ohne.length - brauchbar.length,
     quellen: daten.sources || {},
     quellenOk: daten.sourcesOk || 0,
     quellenGesamt: daten.sourcesTotal || 0,
