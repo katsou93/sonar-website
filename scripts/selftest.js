@@ -800,6 +800,48 @@ async function main() {
     });
   });
 
+  console.log("\nWas fuer ein Ding ist das?");
+
+  // Das Meme-Lexikon ist fuer Coin-Namen gebaut und kennt Hunde,
+  // Katzen, Froesche. Fuer Nachrichten taugt es nicht: fuer "Stan
+  // Kroenke" gibt es keine Hunde-Schublade. Live landete deshalb fast
+  // alles in "ohne Schublade" - die Einteilung war praktisch leer.
+  const heuteQuelle = require("fs").readFileSync(
+    require("path").join(__dirname, "..", "api", "today.js"), "utf8");
+  const artVon = new Function(
+    heuteQuelle.slice(heuteQuelle.indexOf("const ORT_ENDUNG"),
+      heuteQuelle.indexOf("module.exports = async")) + "; return artVon;")();
+
+  await check("ein Vorname-Nachname-Paar ist eine Person", () => {
+    assert.strictEqual(artVon("Gloria Steinem", "Gloria Steinem, icon, dies at 91").key, "person");
+    assert.strictEqual(artVon("Stan Kroenke", "Stan Kroenke plans stadium").key, "person");
+  });
+
+  await check("CamelCase mitten im Wort verraet eine Marke", () => {
+    // StartLux, OpenAI - so schreibt niemand einen Nachnamen.
+    assert.strictEqual(artVon("StartLux", "A dark horse enters the AI race: StartLux").key, "marke");
+    assert.strictEqual(artVon("OpenAI", "Government backs OpenAI in court").key, "marke");
+  });
+
+  await check("was hinter einer Ortspraeposition steht, ist ein Ort", () => {
+    assert.strictEqual(artVon("Nepal", "Symbolic funerals held in Nepal for those lost").key, "ort");
+    assert.strictEqual(artVon("Ajnar River", "Ajnar River Madhya Pradesh").key, "ort");
+  });
+
+  await check("ein generisches Wort bekommt KEINE Schublade angedichtet", () => {
+    // "Government" und "Train" sind keine Dinge, ueber die jemand einen
+    // Coin macht. Sie duerfen durchfallen statt irgendwo einsortiert zu
+    // werden - eine falsche Einordnung ist schlimmer als keine.
+    assert.strictEqual(artVon("Government", "US Government backs OpenAI in case"), null);
+    assert.strictEqual(artVon("Train", "You are also a neural network, train on good stuff"), null);
+  });
+
+  await check("artVon wirft nie, auch ohne Schlagzeile", () => {
+    [null, undefined, "", "   "].forEach((x) => {
+      assert.doesNotThrow(() => artVon(x, null));
+    });
+  });
+
   await check("Wikipedia fragt gestern ab, nicht heute", () => {
     // Heutige Tagesstatistik ist noch nicht fertig - das gaebe einen 404.
     assert.strictEqual(bz.wikiPath(Date.parse("2026-09-01T07:00:00Z")), "2026/08/30");
