@@ -69,7 +69,37 @@ module.exports = async function handler(req, res) {
   const gruppen = new Map();
   const ohne = [];
 
+  // Mehrzahl und Einzahl zusammenfassen. Live gesehen standen "film",
+  // "films" und "series" als drei getrennte Eintraege nebeneinander -
+  // das sind aber nicht drei Themen, das ist eines, dreimal gezaehlt,
+  // und jedes davon wirkte dadurch schwaecher als es ist.
+  const stamm = (w) => {
+    const x = String(w || "").toLowerCase();
+    if (x.length > 4 && x.endsWith("ies")) return x.slice(0, -3) + "y";
+    if (x.length > 4 && x.endsWith("es")) return x.slice(0, -2);
+    if (x.length > 3 && x.endsWith("s") && !x.endsWith("ss")) return x.slice(0, -1);
+    return x;
+  };
+  const zusammen = new Map();
   for (const term of daten.terms || []) {
+    const wort = String(term.term || "");
+    if (!wort) continue;
+    const key = stamm(wort);
+    const vorhanden = zusammen.get(key);
+    if (!vorhanden) {
+      zusammen.set(key, { term: wort, sources: (term.sources || []).slice(), traffic: term.traffic || 0 });
+      continue;
+    }
+    // Die kuerzere Schreibweise gewinnt - "film" liest sich besser als
+    // "films", und es ist dieselbe Sache.
+    if (wort.length < vorhanden.term.length) vorhanden.term = wort;
+    (term.sources || []).forEach((q) => {
+      if (vorhanden.sources.indexOf(q) === -1) vorhanden.sources.push(q);
+    });
+    vorhanden.traffic = Math.max(vorhanden.traffic, term.traffic || 0);
+  }
+
+  for (const term of zusammen.values()) {
     const wort = String(term.term || "");
     if (!wort) continue;
 
@@ -97,10 +127,16 @@ module.exports = async function handler(req, res) {
   const kategorien = Array.from(gruppen.entries())
     .map(([key, begriffe]) => {
       begriffe.sort((a, b) => b.gewicht - a.gewicht);
+      // Nur was von mindestens zwei Quellen kommt. Ein einzelner
+      // Treffer ist zu oft ein Nachrichtenticker, der dasselbe Wort
+      // stuendlich wiederholt - er fuellt die Kategorien mit Rauschen
+      // und laesst die echten Themen darin untergehen. Die Gesamtzahl
+      // bleibt trotzdem ehrlich stehen.
+      const zeigbar = begriffe.filter((b) => b.erwaehnungen >= 2);
       return {
         key: key,
         label: narrative.labelOf(key),
-        begriffe: begriffe.slice(0, 8),
+        begriffe: (zeigbar.length ? zeigbar : begriffe).slice(0, 8),
         anzahl: begriffe.length,
         // Die Kategorie ist so stark wie ihre Begriffe zusammen - aber
         // eine Kategorie mit einem sehr starken Begriff soll nicht von
@@ -110,6 +146,7 @@ module.exports = async function handler(req, res) {
         ),
       };
     })
+    .filter((k) => k.begriffe.some((b) => b.erwaehnungen >= 2))
     .sort((a, b) => b.punkte - a.punkte);
 
   ohne.sort((a, b) => b.gewicht - a.gewicht);
