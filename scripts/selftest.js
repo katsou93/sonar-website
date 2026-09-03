@@ -753,11 +753,51 @@ async function main() {
 
   await check("ein Begriff aus zwei Quellen merkt sich beide", () => {
     const bucket = new Map();
-    bz.termsFromTitles([{ title: "Raccoon sighting", traffic: 1000 }], bucket, "trends_us");
-    bz.termsFromTitles([{ title: "The raccoon returns", traffic: 0 }], bucket, "news");
+    // ganz=true: bei Google Trends steht der Suchbegriff selbst, der
+    // wird nicht zerlegt.
+    bz.termsFromTitles([{ title: "raccoon", traffic: 1000 }], bucket, "trends_us", true);
+    bz.termsFromTitles([{ title: "Raccoon spotted downtown", traffic: 0 }], bucket, "news");
     const hit = bucket.get("raccoon");
     assert.deepStrictEqual(Array.from(hit.sources).sort(), ["news", "trends_us"]);
     assert.strictEqual(hit.traffic, 1000, "das hoehere Volumen muss gewinnen");
+  });
+
+  console.log("\nEntitaeten statt Woerter");
+
+  await check("ein Name bleibt zusammen, statt in Woerter zu zerfallen", () => {
+    // Der Fehler, der die Seite entwertet hat: aus "Gloria Steinem,
+    // groundbreaking feminist, dies at 91" wurden vier Eintraege -
+    // gloria, steinem, groundbreaking, feminist. Keiner davon ist das
+    // Thema. Das Thema ist EIN Ding, und genau so hiesse der Coin.
+    const e = bz.entitiesFromTitle("Gloria Steinem, groundbreaking feminist icon, dies at 91");
+    assert.deepStrictEqual(e, ["Gloria Steinem"]);
+  });
+
+  await check("generische Substantive fallen weg, ohne dass man sie auflisten muss", () => {
+    // "deaths", "blocks", "companies" ueberlebten vorher, weil sie
+    // formal aussahen wie alles andere. Klein geschrieben sind sie
+    // Grammatik - und Grammatik faellt jetzt automatisch weg.
+    assert.deepStrictEqual(bz.entitiesFromTitle("Companies report record deaths in study"), []);
+    assert.deepStrictEqual(bz.entitiesFromTitle("Judge blocks order on deportations"), []);
+  });
+
+  await check("der Satzanfang wird nicht mit einem Namen verwechselt", () => {
+    // Jeder Satz faengt gross an. "Judge" und "Companies" sind deshalb
+    // keine Namen - "Nepal" schon.
+    assert.deepStrictEqual(bz.entitiesFromTitle("Nepal protests escalate as Kathmandu curfew begins"),
+      ["Nepal", "Kathmandu"]);
+  });
+
+  await check("Title-Case-Ueberschriften werden nicht als lauter Namen gelesen", () => {
+    // Wenn JEDES Wort gross ist, sagt die Grossschreibung nichts mehr.
+    const e = bz.entitiesFromTitle("Woman Found Outside Working On Her Car Welcomes Stranger");
+    assert.ok(e.length <= 1, "hoechstens der Anfang, nicht der ganze Satz: " + JSON.stringify(e));
+  });
+
+  await check("entitiesFromTitle wirft nie", () => {
+    [null, undefined, "", "   ", "123 456"].forEach((x) => {
+      assert.ok(Array.isArray(bz.entitiesFromTitle(x)));
+    });
   });
 
   await check("Wikipedia fragt gestern ab, nicht heute", () => {
