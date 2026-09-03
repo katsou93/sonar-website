@@ -357,6 +357,28 @@ const ANFANG_WORT = new Set([
  * dazugehoeren. "New" ist ein Stoppwort - "New York" ist ein Ort. Ohne
  * diese Ausnahme blieb live nur "York" uebrig.
  */
+/**
+ * Abstrakte Substantive, die nie ein Thema sind - auch nicht gross
+ * geschrieben mitten im Satz. Live standen "Child", "House", "Train"
+ * und "Government" in der Liste; niemand macht daraus einen Coin, und
+ * sie draengen die echten Themen nach unten.
+ *
+ * Bewusst kurz gehalten und auf ABSTRAKTES beschraenkt. "Dog", "Cat",
+ * "Moon" bleiben drin - das sind Dinge, die man anfassen oder abbilden
+ * kann, und genau daraus entstehen Meme-Coins.
+ */
+const GENERISCH = new Set([
+  "child", "children", "house", "home", "family", "life", "world", "time", "year",
+  "government", "train", "school", "college", "office", "system", "service", "program",
+  "project", "problem", "question", "answer", "reason", "result", "change", "future",
+  "history", "story", "news", "media", "public", "social", "national", "international",
+  "business", "industry", "economy", "market", "budget", "income", "benefit", "support",
+  "health", "medical", "patient", "disease", "treatment", "research", "science",
+  "security", "safety", "energy", "power", "climate", "weather", "nature", "water",
+  "friend", "parent", "mother", "father", "brother", "sister", "husband", "wife",
+  "morning", "night", "summer", "winter", "spring", "autumn", "holiday", "birthday",
+]);
+
 const NAMENSTEIL = new Set([
   "new", "old", "big", "great", "north", "south", "east", "west", "upper", "lower",
   "san", "santa", "saint", "los", "las", "van", "von", "der", "del", "la", "le", "el",
@@ -405,7 +427,10 @@ function entitiesFromTitle(satz) {
       // Ein Stoppwort darf mitten in einem Namen stehen, wenn direkt
       // ein weiterer Name folgt - "New York", "San Francisco".
       (!STOPWORDS.has(klein) || (NAMENSTEIL.has(klein) && /^[A-ZÄÖÜ][a-z]/.test((woerter[i + 1] || "").replace(/[^A-Za-z]/g, "")))) &&
-      !NOISE.has(klein);
+      !NOISE.has(klein) &&
+      // Abstrakte Substantive fliegen ueberall raus, nicht nur am
+      // Satzanfang - "Child" mitten im Satz ist genauso wenig ein Thema.
+      !GENERISCH.has(klein);
 
     // Bei Title Case darf nur der Satzanfang zaehlen - dort steht das
     // Thema meistens, und der Rest ist reine Schreibkonvention.
