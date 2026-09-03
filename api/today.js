@@ -50,6 +50,76 @@ function gewichtVon(term) {
   return Math.round(quellen * 100 + reichweite * 12);
 }
 
+/* ------------------------------------------------------------------ *
+ * Was fuer ein Ding ist das?
+ * ------------------------------------------------------------------ */
+
+/**
+ * Das Meme-Lexikon kennt Hunde, Katzen, Froesche, Politik. Es ist fuer
+ * COIN-NAMEN gebaut, und dort funktioniert es. Fuer Nachrichten
+ * funktioniert es nicht: die liefern Personen und Orte, und fuer "Stan
+ * Kroenke" gibt es keine Hunde-Schublade. Live landete deshalb fast
+ * alles in "ohne Schublade" - die Einteilung, um die es eigentlich
+ * ging, war praktisch leer.
+ *
+ * Also eine zweite Einteilung, die zu Nachrichten passt: nicht WORUEBER
+ * das Ding handelt, sondern WAS FUER EIN DING es ist. Person, Ort,
+ * Marke, Ereignis. Das laesst sich aus der Form des Namens und aus der
+ * Schlagzeile ableiten, ohne ein Weltwissen zu brauchen.
+ *
+ * Das Meme-Lexikon behaelt Vorrang: "Raccoon" ist ein Tier, nicht eine
+ * "Sache". Erst wenn es nicht greift, kommt diese Einteilung.
+ */
+
+const ORT_ENDUNG = /\b(City|River|Island|Bay|County|Valley|Beach|Lake|Mountain|Desert|Sea|Ocean|Park|Bridge|Airport|Stadium|Province|District|State)$/i;
+const MARKE_ENDUNG = /\b(Inc|Corp|Labs?|Studios?|Games|Media|Group|Holdings|Technologies|Systems|Motors|Airlines|Bank)$/i;
+
+const EREIGNIS_WORT = /\b(dies|died|death|killed|kills|murder|crash|crashed|fire|flood|quake|earthquake|storm|protest|riot|arrest|arrested|wins|won|beats|launch|launches|launched|announce|announced|resign|resigns|attack|explosion|rescue|verdict|sentenced|bankrupt|collapse)\b/i;
+const ORT_SATZ = /\b(in|from|across|near|outside|near)\s+$/;
+const MARKE_SATZ = /\b(company|startup|app|firm|maker|brand|platform|studio|developer|founder|CEO|acquired|acquisition|IPO)\b/i;
+
+/** Sieht der Name aus wie ein Personenname? Vorname Nachname, beides gross. */
+function wirktWiePerson(wort) {
+  const teile = String(wort || "").trim().split(/\s+/);
+  if (teile.length < 2 || teile.length > 3) return false;
+  // Jeder Teil gross beginnend und ohne Ziffern - "Gloria Steinem",
+  // "Tom Clancy", "Nikolas Ferreira Daniel".
+  return teile.every((t) => /^[A-ZÄÖÜ][a-zäöüß'-]{1,19}$/.test(t));
+}
+
+/** CamelCase mitten im Wort verraet fast immer eine Marke: StartLux, OpenAI. */
+function wirktWieMarke(wort) {
+  const eins = String(wort || "").trim();
+  if (/\s/.test(eins)) return MARKE_ENDUNG.test(eins);
+  return /^[A-Z][a-z]+[A-Z]/.test(eins) || MARKE_ENDUNG.test(eins);
+}
+
+function artVon(wort, beispiel) {
+  const w = String(wort || "").trim();
+  const satz = String(beispiel || "");
+
+  if (wirktWieMarke(w)) return { key: "marke", label: "Marken und Produkte" };
+  if (ORT_ENDUNG.test(w)) return { key: "ort", label: "Orte" };
+
+  // "protests in Nepal", "fire across California" - was hinter einer
+  // Ortspraeposition steht, ist ein Ort.
+  if (satz) {
+    const stelle = satz.indexOf(w);
+    if (stelle > 0 && ORT_SATZ.test(satz.slice(Math.max(0, stelle - 14), stelle))) {
+      return { key: "ort", label: "Orte" };
+    }
+    if (MARKE_SATZ.test(satz)) return { key: "marke", label: "Marken und Produkte" };
+  }
+
+  if (wirktWiePerson(w)) return { key: "person", label: "Personen" };
+
+  // Ereignis erst zuletzt: fast jede Schlagzeile enthaelt ein
+  // Ereigniswort, das wuerde sonst alles einsammeln.
+  if (satz && EREIGNIS_WORT.test(satz)) return { key: "ereignis", label: "Ereignisse" };
+
+  return null;
+}
+
 module.exports = async function handler(req, res) {
   if (preflight(req, res)) return;
   if (!authorized(req)) return fail(res, 401, "Zugriffsschlüssel fehlt oder ist falsch.", "UNAUTHORIZED");
@@ -67,6 +137,7 @@ module.exports = async function handler(req, res) {
   }
 
   const gruppen = new Map();
+  const labels = new Map();
   const ohne = [];
 
   // Mehrzahl und Einzahl zusammenfassen. Live gesehen standen "film",
@@ -106,7 +177,10 @@ module.exports = async function handler(req, res) {
 
     // Durch dasselbe Lexikon wie ein Coin-Name. Ein Begriff ist ja
     // nichts anderes als der Name, den ein Coin morgen tragen wird.
+    // Erst das Meme-Lexikon - "Raccoon" ist ein Tier, keine "Sache".
+    // Greift es nicht, wird nach der ART des Dings eingeteilt.
     const sektor = narrative.sectorOf({ name: wort, symbol: "" });
+    const art = sektor ? null : artVon(wort, term.beispiel);
     const eintrag = {
       wort: wort,
       quellen: term.sources || [],
@@ -118,11 +192,12 @@ module.exports = async function handler(req, res) {
       gewicht: gewichtVon(term),
     };
 
-    if (!sektor) {
+    if (!sektor && !art) {
       ohne.push(eintrag);
       continue;
     }
-    const key = sektor.key || sektor;
+    const key = sektor ? (sektor.key || sektor) : art.key;
+    if (!labels.has(key)) labels.set(key, sektor ? narrative.labelOf(key) : art.label);
     const liste = gruppen.get(key) || [];
     liste.push(eintrag);
     gruppen.set(key, liste);
@@ -139,7 +214,7 @@ module.exports = async function handler(req, res) {
       const zeigbar = begriffe.filter((b) => b.erwaehnungen >= 2);
       return {
         key: key,
-        label: narrative.labelOf(key),
+        label: labels.get(key) || narrative.labelOf(key),
         begriffe: (zeigbar.length ? zeigbar : begriffe).slice(0, 8),
         anzahl: begriffe.length,
         // Die Kategorie ist so stark wie ihre Begriffe zusammen - aber
