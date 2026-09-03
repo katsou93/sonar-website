@@ -286,7 +286,19 @@ const SOURCES = [
       const data = await getJson(url, { source: "wikipedia", timeoutMs: 4500, retries: 0 });
       const articles = (data && data.items && data.items[0] && data.items[0].articles) || [];
       return articles
-        .filter((a) => a && a.article && !/^(Main_Page|Special:|Wikipedia:|Portal:|Category:|-)/.test(a.article))
+        .filter((a) => a && a.article && !/^(Main_Page|Special:|Wikipedia:|Portal:|Category:|File:|Help:|Talk:|-)/.test(a.article))
+        // Wikipedias Meistgelesen-Liste steckt voller Verwaltungsseiten:
+        // "Deaths in 2026", "List of ...", ".xyz", Jahreszahlen. Live
+        // standen genau die oben und sahen aus wie Themen. Ein Coin
+        // namens "Deaths in 2026" wird nie jemand machen.
+        .filter((a) => {
+          const t = String(a.article).replace(/_/g, " ");
+          if (/^(Deaths|List|Index|Timeline|Outline|Glossary|Comparison)\b/i.test(t)) return false;
+          if (/\b(in|of) (19|20)\d\d$/i.test(t)) return false;
+          if (/^\W/.test(t)) return false;
+          if (/^(19|20)\d\d/.test(t)) return false;
+          return true;
+        })
         .slice(0, 60)
         .map((a) => ({ title: String(a.article).replace(/_/g, " "), traffic: a.views || 0 }));
     },
