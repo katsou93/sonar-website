@@ -307,16 +307,22 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
 .hzblock h3{font-size:14px;margin:0 0 8px}
 .hzblock.neu{padding:14px 16px;border:1px solid rgba(20,241,149,.32);border-radius:10px;
   background:rgba(20,241,149,.045)}
-.hzwoerter{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}
-.hzw{display:inline-flex;align-items:center;gap:7px;padding:5px 10px;border-radius:7px;cursor:pointer;
-  background:rgba(255,255,255,.04);border:1px solid var(--border);font-size:13px;color:var(--mu)}
-.hzw i{font-style:normal;font-family:var(--mono);font-size:10px;padding:1px 5px;border-radius:4px;
-  background:rgba(255,255,255,.07);color:var(--mu2)}
-.hzw:hover{border-color:var(--grn);color:var(--tx)}
-.hzw.mittel{color:var(--tx);border-color:rgba(255,197,49,.3)}
-.hzw.mittel i{background:rgba(255,197,49,.16);color:var(--yel)}
-.hzw.stark{color:var(--tx);font-weight:600;border-color:var(--grn);background:rgba(20,241,149,.08)}
-.hzw.stark i{background:rgba(20,241,149,.2);color:var(--grn)}
+.hzwoerter{display:flex;flex-direction:column;gap:6px;margin-top:9px}
+.hzzeile{padding:8px 11px;border-radius:8px;cursor:pointer;
+  background:rgba(255,255,255,.03);border:1px solid var(--border)}
+.hzzeile:hover{border-color:var(--grn)}
+.hzkopf{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;font-size:13.5px}
+.hzkopf b{color:var(--mu)}
+.hzkopf i{font-style:normal;font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:4px;
+  background:rgba(255,255,255,.07);color:var(--mu2);flex:none}
+.hzkopf .mu2{font-size:11px}
+.hzsatz{margin-top:4px;font-size:12px;color:var(--mu2);line-height:1.5}
+.hzzeile.mittel .hzkopf b{color:var(--tx)}
+.hzzeile.mittel .hzkopf i{background:rgba(255,197,49,.16);color:var(--yel)}
+.hzzeile.mittel{border-color:rgba(255,197,49,.28)}
+.hzzeile.stark .hzkopf b{color:var(--tx);font-weight:700}
+.hzzeile.stark .hzkopf i{background:rgba(20,241,149,.2);color:var(--grn)}
+.hzzeile.stark{border-color:var(--grn);background:rgba(20,241,149,.06)}
 .hztreffer{width:100%;margin-top:10px;padding:10px 12px;border-radius:8px;font-size:12.5px;
   line-height:1.6;background:rgba(255,255,255,.03);border:1px solid var(--border)}
 .thcoins{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
@@ -1944,9 +1950,14 @@ function hzWort(b){
   // durchlaeuft.
   var stark = b.erwaehnungen >= 3;
   var mittel = b.erwaehnungen === 2;
-  return '<span class="hzw'+(stark?" stark":mittel?" mittel":"")+'" data-wort="'+esc(b.wort)+'" '+
-    'title="'+esc((b.quellen||[]).join(", "))+'">'+
-    esc(b.wort)+'<i>'+b.erwaehnungen+'</i></span>';
+  var quellen = (b.quellen||[]).map(function(q){ return QUELL_NAME[q] || q; }).join(" · ");
+  return '<div class="hzzeile'+(stark?" stark":mittel?" mittel":"")+'" data-wort="'+esc(b.wort)+'">'+
+    '<div class="hzkopf"><b>'+esc(b.wort)+'</b><i>'+b.erwaehnungen+' Quellen</i>'+
+      '<span class="mu2">'+esc(quellen)+'</span></div>'+
+    // Die Schlagzeile. Ohne sie steht da nur "Steinem" und man muss
+    // raten; mit ihr weiss man in einer Sekunde, ob das Meme-Stoff ist.
+    (b.beispiel ? '<div class="hzsatz">'+esc(b.beispiel)+'</div>' : '')+
+  '</div>';
 }
 
 function uhr(ts){
