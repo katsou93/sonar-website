@@ -104,11 +104,13 @@ function wikiPath(now) {
 const SOURCES = [
   {
     key: "trends_us",
+    ganz: true,
     label: "Google Trends US",
     load: async () => rssTitles(await getText("https://trends.google.com/trending/rss?geo=US", { source: "trends", timeoutMs: 4500 })),
   },
   {
     key: "trends_de",
+    ganz: true,
     label: "Google Trends DE",
     load: async () => rssTitles(await getText("https://trends.google.com/trending/rss?geo=DE", { source: "trends", timeoutMs: 4500 })),
   },
@@ -276,6 +278,7 @@ const SOURCES = [
   },
   {
     key: "wiki",
+    ganz: true,
     label: "Wikipedia",
     load: async () => {
       const url =
@@ -291,16 +294,131 @@ const SOURCES = [
 ];
 
 /** Aus Schlagzeilen brauchbare Einzelbegriffe machen. */
-function termsFromTitles(entries, bucket, sourceKey) {
+/**
+ * Satzanfaenge, die nie ein Thema sind. Ein grossgeschriebenes Wort am
+ * Satzanfang ist meistens nur Grammatik.
+ */
+const ANFANG_WORT = new Set([
+  "the", "this", "that", "these", "those", "my", "our", "your", "his", "her", "their", "its",
+  "found", "just", "look", "looking", "some", "someone", "what", "when", "where", "why", "how",
+  "after", "before", "first", "last", "best", "worst", "does", "did", "can", "could", "would",
+  "should", "here", "there", "they", "guys", "anyone", "finally", "apparently", "breaking",
+  "update", "help", "need", "saw", "new", "why", "who", "which", "and", "but", "for", "with",
+  "from", "into", "over", "under", "about", "more", "most", "many", "much", "such", "than",
+  "then", "now", "today", "yesterday", "tomorrow", "week", "year",
+  // Substantive, mit denen Schlagzeilen anfangen. Sie sind gross
+  // geschrieben, ohne Namen zu sein - "Judge blocks...", "Companies
+  // report...". Live gemessen kamen genau diese durch und machten die
+  // Seite generisch.
+  "judge", "judges", "police", "court", "courts", "report", "reports", "study", "studies",
+  "official", "officials", "source", "sources", "video", "videos", "photo", "photos",
+  "man", "woman", "men", "women", "people", "family", "families", "student", "students",
+  "worker", "workers", "doctor", "doctors", "scientist", "scientists", "researcher",
+  "researchers", "expert", "experts", "company", "companies", "government", "state",
+  "states", "city", "cities", "school", "schools", "hospital", "death", "deaths",
+  "group", "groups", "team", "teams", "market", "markets", "price", "prices",
+  "million", "billion", "thousand", "hundred", "video", "watch", "meet", "check",
+]);
+
+/**
+ * Aus einer Schlagzeile die ENTITAETEN holen - nicht die Woerter.
+ *
+ * Das war der eigentliche Fehler, und er hat die ganze Seite entwertet.
+ * Vorher wurde jede Schlagzeile in einzelne Kleinbuchstaben-Woerter
+ * zerlegt. Aus "Gloria Steinem, groundbreaking feminist, dies at 91"
+ * wurden dann "gloria", "steinem", "groundbreaking", "feminist" - vier
+ * Eintraege, von denen keiner das Thema ist. Das Thema ist EIN Ding:
+ * Gloria Steinem. Und genau so hiesse auch der Coin.
+ *
+ * Gleichzeitig ueberlebten Woerter wie "deaths", "judge", "blocks",
+ * "companies" - formal sahen sie aus wie alles andere. Sie stehen aber
+ * an jedem beliebigen Tag in irgendeiner Schlagzeile und bedeuten
+ * nichts.
+ *
+ * Beides loest dieselbe Regel: nimm zusammenhaengende GROSS
+ * geschriebene Woerter als eine Einheit. Namen sind gross, Grammatik
+ * ist klein. "Gloria Steinem" bleibt zusammen, "deaths" faellt weg,
+ * ohne dass man eine Liste generischer Substantive pflegen muesste.
+ */
+function entitiesFromTitle(satz) {
+  const roh = String(satz || "").trim();
+  if (!roh) return [];
+  const woerter = roh.split(/\s+/);
+
+  // Title Case erkennen: dort ist JEDES Wort gross und die
+  // Grossschreibung sagt nichts mehr aus.
+  const lang = woerter.filter((w) => w.replace(/[^A-Za-z]/g, "").length >= 4);
+  const gross = lang.filter((w) => /^[A-Z]/.test(w.replace(/[^A-Za-z]/g, "")));
+  const titleCase = lang.length >= 4 && gross.length / lang.length > 0.6;
+
+  const out = [];
+  let lauf = [];
+
+  const abschliessen = () => {
+    if (!lauf.length) { return; }
+    // Ein Lauf aus bis zu drei Woertern. Laenger ist keine Entitaet
+    // mehr, sondern ein halber Satz in Grossschreibung.
+    const stueck = lauf.slice(0, 3).join(" ");
+    const flach = stueck.toLowerCase();
+    if (stueck.replace(/[^A-Za-z]/g, "").length >= 4 && !NOISE.has(flach) && !STOPWORDS.has(flach)) {
+      out.push(stueck);
+    }
+    lauf = [];
+  };
+
+  for (let i = 0; i < woerter.length; i++) {
+    const sauber = woerter[i].replace(/[^A-Za-zÄÖÜäöüß'-]/g, "");
+    const klein = sauber.toLowerCase();
+    const istName =
+      sauber.length >= 3 &&
+      sauber.length <= 20 &&
+      /^[A-ZÄÖÜ][a-zäöüß'-]/.test(sauber) &&
+      !ANFANG_WORT.has(klein) &&
+      !STOPWORDS.has(klein) &&
+      !NOISE.has(klein);
+
+    // Bei Title Case darf nur der Satzanfang zaehlen - dort steht das
+    // Thema meistens, und der Rest ist reine Schreibkonvention.
+    if (titleCase && i > 2) { abschliessen(); continue; }
+
+    if (istName) lauf.push(sauber);
+    else abschliessen();
+  }
+  abschliessen();
+  return out;
+}
+
+/**
+ * Begriffe einsammeln.
+ *
+ * ganz=true bedeutet: der Titel IST schon die Entitaet und wird nicht
+ * zerlegt. Das gilt fuer Google Trends (dort steht der Suchbegriff) und
+ * Wikipedia (dort steht der Artikelname). Nur echte Schlagzeilen werden
+ * auseinandergenommen.
+ */
+function termsFromTitles(entries, bucket, sourceKey, ganz) {
   for (const entry of entries) {
-    for (const word of tokenize(entry.title)) {
-      if (word.length < 4 || word.length > 20) continue;
-      if (/^[0-9]+$/.test(word)) continue;
-      if (NOISE.has(word) || STOPWORDS.has(word)) continue;
-      const hit = bucket.get(word) || { term: word, sources: new Set(), traffic: 0 };
+    const titel = String(entry.title || "");
+    let stuecke;
+    if (ganz) {
+      const flach = titel.toLowerCase().trim();
+      stuecke = flach.length >= 4 && !NOISE.has(flach) && !STOPWORDS.has(flach) ? [titel.trim()] : [];
+    } else {
+      stuecke = entitiesFromTitle(titel);
+    }
+
+    for (const stueck of stuecke) {
+      const key = stueck.toLowerCase();
+      if (key.length < 4 || key.length > 40) continue;
+      if (/^[0-9\s]+$/.test(key)) continue;
+      const hit = bucket.get(key) || { term: stueck, sources: new Set(), traffic: 0, beispiel: null };
       hit.traffic = Math.max(hit.traffic, entry.traffic || 0);
+      // Die Schlagzeile mitnehmen. Ein nacktes Wort kann man nicht
+      // beurteilen - "Steinem" sagt nichts, "Gloria Steinem, feminist
+      // icon, dies at 91" sagt alles, und zwar in einer Sekunde.
+      if (!hit.beispiel && titel.length > stueck.length + 4) hit.beispiel = titel.slice(0, 140);
       if (sourceKey) hit.sources.add(sourceKey);
-      bucket.set(word, hit);
+      bucket.set(key, hit);
     }
   }
 }
@@ -316,6 +434,7 @@ async function fetchBuzz() {
     const results = await Promise.allSettled(SOURCES.map((s) => s.load()));
     const bucket = new Map();
     const sources = {};
+    const alleTitel = [];
     let ok = 0;
 
     results.forEach((res, i) => {
@@ -326,11 +445,42 @@ async function fetchBuzz() {
       }
       ok++;
       sources[src.key] = { label: src.label, ok: true, count: res.value.length };
-      termsFromTitles(res.value, bucket, src.key);
+      // Bei Google Trends steht der Suchbegriff und bei Wikipedia der
+      // Artikelname - beides IST schon die Entitaet und darf nicht
+      // zerlegt werden. Nur echte Schlagzeilen werden auseinander-
+      // genommen.
+      termsFromTitles(res.value, bucket, src.key, !!src.ganz);
+      alleTitel.push({ key: src.key, entries: res.value });
     });
 
+    // Zweiter Durchgang: Bestaetigung.
+    //
+    // Die Entitaetserkennung verlangt Grossschreibung - zu Recht, sonst
+    // kaeme wieder "deaths" und "judge" durch. Aber sie unterzaehlt
+    // dadurch: steht "Jimothy" bei Reddit gross und in einer anderen
+    // Schlagzeile klein mitten im Satz, ist das trotzdem eine zweite
+    // Quelle. Ein bereits bekanntes Thema wiederzuerkennen ist etwas
+    // ganz anderes, als es zu finden - dafuer reicht der blosse Text.
+    for (const { key, entries } of alleTitel) {
+      for (const entry of entries) {
+        const flach = " " + String(entry.title || "").toLowerCase() + " ";
+        for (const [begriff, hit] of bucket) {
+          if (hit.sources.has(key)) continue;
+          if (begriff.length < 5) continue;
+          // Wortgrenzen, damit "stan" nicht in "understand" trifft.
+          if (flach.indexOf(" " + begriff + " ") === -1 &&
+              flach.indexOf(" " + begriff + ",") === -1 &&
+              flach.indexOf(" " + begriff + ".") === -1 &&
+              flach.indexOf(" " + begriff + "'") === -1) continue;
+          hit.sources.add(key);
+          hit.traffic = Math.max(hit.traffic, entry.traffic || 0);
+          if (!hit.beispiel) hit.beispiel = String(entry.title || "").slice(0, 140);
+        }
+      }
+    }
+
     const terms = Array.from(bucket.values())
-      .map((t) => ({ term: t.term, sources: Array.from(t.sources), traffic: t.traffic }))
+      .map((t) => ({ term: t.term, sources: Array.from(t.sources), traffic: t.traffic, beispiel: t.beispiel || null }))
       // Mehrere Quellen schlagen hohes Volumen aus einer einzigen.
       .sort((a, b) => b.sources.length - a.sources.length || b.traffic - a.traffic)
       .slice(0, 120);
@@ -419,4 +569,5 @@ async function analyse(items) {
   };
 }
 
-module.exports = { analyse, fetchBuzz, crossWithCoins, rssTitles, termsFromTitles, wikiPath, NOISE, SOURCES };
+module.exports = {
+  entitiesFromTitle, analyse, fetchBuzz, crossWithCoins, rssTitles, termsFromTitles, wikiPath, NOISE, SOURCES };
