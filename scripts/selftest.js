@@ -808,8 +808,10 @@ async function main() {
   // alles in "ohne Schublade" - die Einteilung war praktisch leer.
   const heuteQuelle = require("fs").readFileSync(
     require("path").join(__dirname, "..", "api", "today.js"), "utf8");
+  // Ab dem ersten Baustein der Einteilung bis zum Handler - wer hier
+  // etwas davor einfuegt, muss diese Grenze mitziehen.
   const artVon = new Function(
-    heuteQuelle.slice(heuteQuelle.indexOf("const ORT_ENDUNG"),
+    heuteQuelle.slice(heuteQuelle.indexOf("const MARKEN"),
       heuteQuelle.indexOf("module.exports = async")) + "; return artVon;")();
 
   await check("ein Vorname-Nachname-Paar ist eine Person", () => {
@@ -834,6 +836,20 @@ async function main() {
     // werden - eine falsche Einordnung ist schlimmer als keine.
     assert.strictEqual(artVon("Government", "US Government backs OpenAI in case"), null);
     assert.strictEqual(artVon("Train", "You are also a neural network, train on good stuff"), null);
+  });
+
+  await check("bekannte Marken werden nicht fuer Personen gehalten", () => {
+    // "Hugging Face" sieht aus wie Vorname Nachname und ist eine Firma.
+    // Solche Faelle loest keine klugere Regel, nur eine kurze Liste.
+    assert.strictEqual(artVon("Hugging Face", "Hugging Face raises new round").key, "marke");
+    assert.strictEqual(artVon("Microsoft", "Microsoft announces new Xbox").key, "marke");
+  });
+
+  await check("bekannte Orte landen bei den Orten, nicht bei den Ereignissen", () => {
+    // Live gemessen: "Pennsylvania" wurde zum Ereignis, weil in der
+    // Schlagzeile "fire" stand. Der Ort ist aber das Ding.
+    assert.strictEqual(artVon("Pennsylvania", "Fire kills two in Pennsylvania").key, "ort");
+    assert.strictEqual(artVon("Washington", "Protests in Washington today").key, "ort");
   });
 
   await check("artVon wirft nie, auch ohne Schlagzeile", () => {
