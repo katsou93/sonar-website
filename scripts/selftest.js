@@ -2252,6 +2252,19 @@ async function main() {
     assert.ok(/slice\(0,\s*3\)/.test(f.slice(0, 500)), "Deckel auf drei fehlt");
   });
 
+  await check("die App wird auch unter /app nicht vom CDN eingefroren", () => {
+    // Live passiert: die API lief schon auf neuem Stand, die Oberflaeche
+    // kam minutenlang alt aus dem Cache. Grund war, dass cleanUrls die
+    // echte Adresse auf /app legt, die Cache-Regel aber nur fuer
+    // /app.html galt.
+    const vercel = JSON.parse(require("fs").readFileSync(
+      require("path").join(__dirname, "..", "vercel.json"), "utf8"));
+    const regel = (vercel.headers || []).find((h) => h.source === "/app");
+    assert.ok(regel, "Regel fuer /app fehlt");
+    const cc = (regel.headers || []).find((h) => h.key === "Cache-Control");
+    assert.ok(cc && /max-age=0/.test(cc.value), "Cache-Control fuer /app fehlt oder cacht");
+  });
+
   await check("das Zielfenster steht als Regler in der Oberflaeche", () => {
     assert.ok(/id="pf-cap"/.test(appQuelle));
     assert.ok(/\$5k – \$40k/.test(appQuelle), "Standardbeschriftung 5k-40k fehlt");
