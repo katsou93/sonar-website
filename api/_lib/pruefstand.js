@@ -23,6 +23,8 @@
  * ist jeder Punkt hier mit "Hinweis" oder "Beweis" gekennzeichnet.
  */
 
+const wash = require("./wash");
+
 const ZIEL_FAKTOR = 5;
 
 /**
@@ -40,6 +42,20 @@ const ZIEL_FAKTOR = 5;
 const GIPFEL_UNTEN = 70000;
 const GIPFEL_TYPISCH = 180000;
 const GIPFEL_OBEN = 400000;
+
+/**
+ * Das Fenster, auf das dieses Werkzeug zielt.
+ *
+ * Deine Vorgabe, und sie ist die logische Folge aus dem Gipfelfenster
+ * oben: unter 5.000 ist noch gar nichts da, worueber sich urteilen
+ * liesse - keine Halter, kein Pool, keine Stunde Handelsgeschichte.
+ * Ueber 40.000 ist der Weg zum ueblichen Gipfel schon zu kurz, um aus
+ * fuenf Euro fuenfundzwanzig zu machen. Dazwischen liegt der Bereich,
+ * in dem beides gleichzeitig stimmt: genug Substanz zum Pruefen und
+ * genug Platz nach oben.
+ */
+const FOKUS_UNTEN = 5000;
+const FOKUS_OBEN = 40000;
 
 const geld = (n) =>
   n == null
@@ -114,6 +130,38 @@ function checkPlatz(c) {
     "Bei " + geld(c.marketCap) + " ist der uebliche Gipfel schon erreicht oder ueberschritten. " +
     "Fuer 5x muesste er auf " + geld(c.marketCap * ZIEL_FAKTOR) + ". Du waerst der Ausgang, nicht der Gewinner.",
     -25, true,
+  );
+}
+
+/**
+ * Liegt der Coin im Zielfenster?
+ *
+ * Eigene Zeile und nicht bloss ein Filter, weil ein Filter etwas
+ * verschwinden laesst und eine Zeile es erklaert. Wenn ein Coin von
+ * ganz oben in der Liste steht und trotzdem nicht gekauft werden
+ * sollte, muss dastehen warum.
+ */
+function checkFenster(c) {
+  const m = c.marketCap;
+  if (!(m > 0)) return zeile("fenster", "Zielfenster", "unbekannt", "Marktwert unbekannt.", -5, false);
+  if (m < FOKUS_UNTEN) {
+    return zeile(
+      "fenster", "Zielfenster", "mittel",
+      geld(m) + " - unter " + geld(FOKUS_UNTEN) + " gibt es noch nichts zu pruefen. Zu frueh, nicht zu billig.",
+      -10, true,
+    );
+  }
+  if (m > FOKUS_OBEN) {
+    return zeile(
+      "fenster", "Zielfenster", "schlecht",
+      geld(m) + " - ueber " + geld(FOKUS_OBEN) + " ist der Weg zum ueblichen Gipfel zu kurz fuer deinen Fuenffacher.",
+      -18, true,
+    );
+  }
+  return zeile(
+    "fenster", "Zielfenster", "gut",
+    geld(m) + " - genau im Fenster (" + geld(FOKUS_UNTEN) + " bis " + geld(FOKUS_OBEN) + ").",
+    12, true,
   );
 }
 
@@ -360,6 +408,31 @@ function checkSocials(c) {
   return zeile("socials", "Aussenauftritt", "gut", hat.join(", ") + " hinterlegt.", 8, false);
 }
 
+/**
+ * Der gemachte Chart - die freie Haelfte.
+ *
+ * Aus wash.js, damit die Rechnung an einer Stelle steht und nicht
+ * zweimal gepflegt werden muss.
+ */
+function checkGemacht(c) {
+  const w = wash.washFrei(c);
+  if (!w.befunde.length) {
+    return zeile("gemacht", "Gemachter Chart", "gut", "Nichts, was nach hergestelltem Handel aussieht.", 8, false);
+  }
+  const schlimm = w.befunde.filter((b) => b.stufe === "schlecht");
+  if (schlimm.length >= 2) {
+    return zeile(
+      "gemacht", "Gemachter Chart", "schlecht",
+      schlimm.map((b) => b.text).join(" "),
+      -28, false,
+    );
+  }
+  if (schlimm.length === 1) {
+    return zeile("gemacht", "Gemachter Chart", "schlecht", schlimm[0].text, -18, false);
+  }
+  return zeile("gemacht", "Gemachter Chart", "mittel", w.befunde[0].text, -6, false);
+}
+
 function checkAlter(c) {
   const a = c.ageMinutes;
   if (a == null) return zeile("alter", "Alter", "unbekannt", "Alter unbekannt.", 0, false);
@@ -417,11 +490,13 @@ function substanzMangel(c) {
 function freiesUrteil(coin) {
   const c = coin || {};
   const checks = [
+    checkFenster(c),
     checkPlatz(c),
     checkAusstieg(c),
     checkVerteilung(c),
     checkEcht(c),
     checkFluss(c),
+    checkGemacht(c),
     checkHalter(c),
     checkDev(c),
     checkRechte(c),
@@ -470,8 +545,9 @@ function freiesUrteil(coin) {
  * Volumen, keine Halterzahl und keine schoene Geschichte macht wett, dass
  * dreissig Prozent des Vorrats seit Block eins einer Person gehoeren.
  */
-function gesamtUrteil(frei, bundle, story) {
+function gesamtUrteil(frei, bundle, story, extras) {
   const f = frei || { punkte: 50, checks: [] };
+  const ex = extras || {};
   let punkte = f.punkte;
   const zusatz = [];
 
@@ -502,6 +578,34 @@ function gesamtUrteil(frei, bundle, story) {
     }
   }
 
+  // Der bewiesene gemachte Chart. Sticht wie das Bundle: wenn drei
+  // Wallets den Umsatz unter sich hin und her schieben, ist jede andere
+  // Zahl dieses Coins eine Folge davon und keine eigene Nachricht.
+  const gemacht = !!(ex.wash && ex.wash.stufe === "gemacht");
+  if (ex.wash && ex.wash.gruende && ex.wash.gruende.length) {
+    const g = ex.wash.gruende[0];
+    const ab = gemacht ? -30 : g.stufe === "gut" ? 10 : -10;
+    punkte += ab;
+    zusatz.push(zeile(
+      "wash", "Selbst gehandelt",
+      gemacht ? "schlecht" : g.stufe === "gut" ? "gut" : "mittel",
+      g.text, ab, !!g.beweis,
+    ));
+  }
+
+  // Wer geht hier rein? Die einzige Zeile, die von fremden Menschen
+  // handelt statt von Zahlen.
+  if (ex.kaeufer && ex.kaeufer.verfuegbar) {
+    const k = ex.kaeufer;
+    const ab = k.gute > 0 ? 20 : k.clusterWallets >= 3 ? -20 : k.schlecht >= 2 ? -12 : 0;
+    punkte += ab;
+    zusatz.push(zeile(
+      "kaeufer", "Wer kauft",
+      k.gute > 0 ? "gut" : k.clusterWallets >= 3 || k.schlecht >= 2 ? "schlecht" : "mittel",
+      (k.gruende && k.gruende[0]) || "Kaeufer geprueft.", ab, true,
+    ));
+  }
+
   punkte = Math.max(0, Math.min(100, Math.round(punkte)));
   const fatal =
     f.ampel === "rot" && f.checks.some((z) => z.schluessel === "rechte" && z.stufe === "schlecht");
@@ -509,10 +613,11 @@ function gesamtUrteil(frei, bundle, story) {
 
   return {
     punkte: punkte,
-    ampel: gebuendelt ? "rot" : ampelVon(punkte, fatal),
+    ampel: gebuendelt || gemacht ? "rot" : ampelVon(punkte, fatal),
     checks: f.checks.concat(zusatz),
     tief: true,
     gebuendelt: gebuendelt,
+    gemacht: gemacht,
   };
 }
 
@@ -521,6 +626,10 @@ module.exports = {
   gesamtUrteil,
   platzNachOben,
   substanzMangel,
+  checkFenster,
+  checkGemacht,
+  FOKUS_UNTEN,
+  FOKUS_OBEN,
   zeile,
   DECKEL_PUNKTE,
   ZIEL_FAKTOR,
