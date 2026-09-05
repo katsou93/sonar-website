@@ -141,6 +141,19 @@ main{padding:26px 0 80px}
 .pfsum{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
 .pfsumbox{padding:9px 15px;border-radius:10px;border:1px solid var(--border);background:var(--panel);font-size:13px}
 .pfsumbox b{font-family:var(--mono);font-size:16px;margin-right:7px}
+.pfwal{margin-top:10px;border-top:1px solid rgba(255,255,255,.06)}
+.pfwrow{display:flex;gap:12px;align-items:baseline;padding:7px 0;border-top:1px solid rgba(255,255,255,.04);font-size:12.5px}
+.pfwrow:first-child,.pfwrow2:first-child{border-top:0}
+.pfwrow code,.pfwrow2 code{font-family:var(--mono);font-size:12px;color:var(--tx);flex:0 0 auto}
+.pfwrow2{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;padding:9px 0;border-top:1px solid rgba(255,255,255,.04)}
+.pfwdot{width:7px;height:7px;border-radius:50%;flex:0 0 7px;position:relative;top:-1px}
+.pfwsol{font-family:var(--mono);font-size:12px;color:var(--grn);flex:0 0 auto}
+.pfwwort{font-size:10.5px;font-family:var(--mono);letter-spacing:.06em;padding:1px 7px;border-radius:5px;flex:0 0 auto;text-transform:uppercase}
+.w-gut{background:rgba(20,241,149,.12);color:var(--grn)}
+.w-schlecht{background:rgba(255,77,106,.12);color:var(--red)}
+.w-mittel{background:rgba(255,197,49,.12);color:var(--yel)}
+.w-unbekannt{background:rgba(255,255,255,.05);color:var(--mu2)}
+.pfwtext{font-size:12.5px;color:var(--mu);line-height:1.55;flex:1 1 100%}
 .fit{display:flex;flex-direction:column;gap:10px}
 .fitrow{padding:13px;border-radius:10px;border:1px solid var(--border)}
 .fitrow.yes{border-color:rgba(20,241,149,.3);background:rgba(20,241,149,.05)}
@@ -519,6 +532,10 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
         <label>Mindestpunkte <b id="pf-min-val">40</b></label>
         <input type="range" id="pf-min" min="0" max="80" step="10" value="40">
       </div>
+      <div class="sld">
+        <label>Zielfenster <b id="pf-cap-val">$5k – $40k</b></label>
+        <input type="range" id="pf-cap" min="0" max="4" step="1" value="1">
+      </div>
     </div>
     <div id="pf-stats"></div>
     <div id="pf-out"></div>
@@ -822,9 +839,20 @@ for(var i=0;i<tabs.length;i++){
    Cache, weil sich die Vergangenheit eines Coins nicht mehr aendert.
    ===================================================================== */
 
-var PF = { coins: [], filter: "alle", tief: {}, offen: {}, timer: null, geladen: false, laeuft: false };
+var PF = { coins: [], filter: "alle", tief: {}, wer: {}, offen: {}, timer: null, geladen: false, laeuft: false };
 var PF_ALTER = [60, 180, 360, 720, 1440, 2880, 4320];
 var PF_ALTER_TXT = ["1 Stunde", "3 Stunden", "6 Stunden", "12 Stunden", "24 Stunden", "2 Tage", "3 Tage"];
+
+/* Das Zielfenster. Standard ist deine Vorgabe 5k bis 40k - dort ist
+   gleichzeitig genug Substanz zum Pruefen und genug Platz nach oben.
+   Die anderen Stufen sind zum Umsehen, nicht zum Kaufen. */
+var PF_CAP = [
+  { min: 0,     max: 5000,  txt: "unter $5k" },
+  { min: 5000,  max: 40000, txt: "$5k – $40k" },
+  { min: 5000,  max: 100000, txt: "$5k – $100k" },
+  { min: 40000, max: 400000, txt: "$40k – $400k" },
+  { min: 0,     max: 0,      txt: "alles" }
+];
 
 /* ---- Das Gedaechtnis fuer X-Konten ----------------------------------
 
@@ -884,11 +912,13 @@ function ladePruefstand(){
 
   var alter = PF_ALTER[Number((el("pf-age")||{}).value || 4)] || 1440;
   var minP  = Number((el("pf-min")||{}).value || 40);
+  var cap   = PF_CAP[Number((el("pf-cap")||{}).value || 1)] || PF_CAP[1];
   var kurve = PF.filter === "kurve" ? "&nurKurve=1" : "";
 
   if(!PF.coins.length) box.innerHTML = '<div class="empty">Kandidaten werden geprüft …</div>';
 
-  apiFetch("/api/frisch?maxAlter="+alter+"&limit=30&minPunkte="+minP+kurve)
+  apiFetch("/api/frisch?maxAlter="+alter+"&limit=30&minPunkte="+minP+
+           "&minMcap="+cap.min+"&maxMcap="+cap.max+kurve)
     .then(function(j){
       PF.laeuft = false;
       if(!j || !j.ok){ box.innerHTML = '<div class="err">'+esc((j&&j.error)||"Konnte nicht geladen werden.")+'</div>'; return; }
@@ -986,9 +1016,11 @@ function pfKarte(c){
     '</div>'+
     (offen ? '<div class="pfliste">'+checks.map(pfZeile).join("")+extra+'</div>' : "")+
     (tief ? pfTiefBlock(tief) : "")+
+    (PF.wer[c.address] ? pfWerBlock(PF.wer[c.address]) : "")+
     '<div class="pfbtns">'+
       '<button class="btn btn-sm btn-g" data-pf-auf="'+esc(c.address)+'">'+(offen?"Checkliste zu":"Checkliste ("+checks.length+" Punkte)")+'</button>'+
       (tief ? '' : '<button class="btn btn-sm btn-p" data-pf-tief="'+esc(c.address)+'">Launch prüfen</button>')+
+      (PF.wer[c.address] ? '' : '<button class="btn btn-sm btn-g" data-pf-wer="'+esc(c.address)+'">Wer kauft hier?</button>')+
       '<a class="btn btn-sm btn-g" href="'+esc(safeUrl(c.pumpUrl)||safeUrl(c.dexUrl))+'" target="_blank" rel="noopener">Chart öffnen</a>'+
       '<button class="btn btn-sm btn-g" data-pf-scan="'+esc(c.address)+'">Im Scanner</button>'+
     '</div>'+
@@ -1020,6 +1052,29 @@ function pfTiefBlock(t){
     }).join("");
   }
 
+  // Selbst gehandelt: die Rundlaeufer, die aus denselben Transaktionen
+  // fallen wie die Kaeuferliste - ohne einen zusaetzlichen Aufruf.
+  var d = t.dreher;
+  if(d && d.haendlerGesamt > 0){
+    out += '<h4 style="margin-top:14px">Selbst gehandelt</h4>';
+    out += '<div class="pfmess">'+
+      '<span>Hin-und-her-Wallets: <b'+((d.anzahl||0)>0?' class="pfwarn"':'')+'>'+(d.anzahl||0)+'</b></span>'+
+      '<span>ihr Umsatzanteil: <b'+((d.anteilProzent||0)>=40?' class="pfwarn"':'')+'>'+
+        (d.anteilProzent==null?"—":d.anteilProzent+"%")+'</b></span>'+
+      '<span>Händler insgesamt: <b>'+d.haendlerGesamt+'</b></span>'+
+    '</div>';
+    out += ((t.wash && t.wash.gruende) || []).map(function(g){
+      return '<div class="pfz"><span class="pfzd z-'+(g.stufe==="gut"?"gut":g.stufe==="mittel"?"mittel":"schlecht")+
+        '"></span><span class="pfzt">'+esc(g.text)+'</span></div>';
+    }).join("");
+    if((d.wallets||[]).length){
+      out += '<div class="pfwal">'+d.wallets.slice(0,5).map(function(w){
+        return '<div class="pfwrow"><code>'+esc(kurz(w.wallet))+'</code>'+
+          '<span class="mu2">'+w.wechsel+' Wechsel · '+w.kauf+' Käufe / '+w.verkauf+' Verkäufe · '+w.sol+' SOL</span></div>';
+      }).join("")+'</div>';
+    }
+  }
+
   if(s){
     out += '<h4 style="margin-top:14px">Story</h4>';
     out += (s.gruende||[]).map(function(g){
@@ -1030,6 +1085,55 @@ function pfTiefBlock(t){
       out += '<div style="margin-top:9px;font-size:12.5px;color:var(--mu);line-height:1.6;'+
         'border-left:2px solid var(--border2);padding-left:11px">'+esc(String(s.beschreibung).slice(0,320))+'</div>';
     }
+  }
+  return out + '</div>';
+}
+
+/** Adressen sind 44 Zeichen lang - lesbar wird das erst gekuerzt. */
+function kurz(a){
+  var s = String(a||"");
+  return s.length > 12 ? s.slice(0,4)+"…"+s.slice(-4) : s;
+}
+
+/**
+ * Wer geht hier rein.
+ *
+ * Die einzige Anzeige im ganzen Werkzeug, die von Menschen handelt statt
+ * von Marktzahlen - deshalb steht pro Wallet ein ganzer Satz da und
+ * nicht bloss eine Kennzahl.
+ */
+function pfWerBlock(k){
+  if(!k || !k.verfuegbar){
+    return '<div class="pftief"><h4>Wer kauft hier</h4><div class="mu" style="font-size:13px">'+
+      esc((k && k.grund) || "Nicht prüfbar.")+'</div></div>';
+  }
+  var out = '<div class="pftief"><h4>Wer kauft hier · letzte '+(k.fenster||60)+' Minuten</h4>';
+  out += '<div class="pfmess">'+
+    '<span>Käufer: <b>'+(k.kaeufer||0)+'</b></span>'+
+    '<span>davon ernsthaft: <b>'+(k.ernsthaft||0)+'</b></span>'+
+    '<span>Streuer: <b>'+(k.streuer||0)+'</b></span>'+
+    '<span>zusammen: <b>'+(k.summeSol||0)+' SOL</b></span>'+
+    '<span>im Cluster: <b'+((k.clusterWallets||0)>=3?' class="pfwarn"':'')+'>'+(k.clusterWallets||0)+'</b></span>'+
+  '</div>';
+
+  out += (k.gruende||[]).map(function(g){
+    return '<div class="pfz"><span class="pfzd z-'+((k.gute||0)>0?"gut":(k.clusterWallets||0)>=3?"schlecht":"mittel")+
+      '"></span><span class="pfzt">'+esc(g)+'</span></div>';
+  }).join("");
+
+  if((k.wallets||[]).length){
+    out += '<div class="pfwal">'+k.wallets.map(function(w){
+      var u = w.urteil || {};
+      return '<div class="pfwrow2">'+
+        '<span class="pfwdot z-'+esc(u.stufe||"unbekannt")+'"></span>'+
+        '<code>'+esc(kurz(w.wallet))+'</code>'+
+        '<span class="pfwsol">'+w.sol+' SOL</span>'+
+        '<span class="pfwwort w-'+esc(u.stufe||"unbekannt")+'">'+esc(u.wort||"?")+'</span>'+
+        '<span class="pfwtext">'+esc(u.text||"")+'</span>'+
+      '</div>';
+    }).join("")+'</div>';
+  } else {
+    out += '<div class="mu" style="font-size:12.5px;margin-top:8px">Niemand mit ernsthaftem Einsatz im Fenster.</div>';
   }
   return out + '</div>';
 }
@@ -1094,6 +1198,34 @@ function tiefPruefen(mint, still){
     });
 }
 
+/**
+ * Wer kauft hier.
+ *
+ * Bewusst nur auf Knopfdruck: das kostet pro Wallet einen Aufruf, und
+ * anders als die Launch-Daten ist die Antwort in einer Stunde eine
+ * andere - sie laesst sich also nicht lange aufheben.
+ */
+function werKauft(mint){
+  if(PF.wer[mint]) return;
+  var karte = document.getElementById("pf-"+mint);
+  var btn = karte && karte.querySelector('[data-pf-wer]');
+  if(btn){ btn.disabled = true; btn.textContent = "Prüfe Wallets …"; }
+
+  apiFetch("/api/kaeufer?mint="+encodeURIComponent(mint)+"&minuten=60")
+    .then(function(j){
+      if(!j || !j.ok){
+        if(btn){ btn.disabled = false; btn.textContent = "Wer kauft hier?"; }
+        return;
+      }
+      PF.wer[mint] = j;
+      pfNeuZeichnen(mint);
+    })
+    .catch(function(e){
+      if(e && e.locked) return;
+      if(btn){ btn.disabled = false; btn.textContent = "Wer kauft hier?"; }
+    });
+}
+
 /** Nur diese eine Karte neu bauen - die Liste bleibt stehen, wo sie ist. */
 function pfNeuZeichnen(mint){
   var alt = document.getElementById("pf-"+mint);
@@ -1111,6 +1243,8 @@ document.addEventListener("click", function(ev){
   if(a){ var m = a.getAttribute("data-pf-auf"); PF.offen[m] = !PF.offen[m]; pfNeuZeichnen(m); return; }
   var t = ev.target.closest && ev.target.closest("[data-pf-tief]");
   if(t){ tiefPruefen(t.getAttribute("data-pf-tief"), false); return; }
+  var w = ev.target.closest && ev.target.closest("[data-pf-wer]");
+  if(w){ werKauft(w.getAttribute("data-pf-wer")); return; }
   var s = ev.target.closest && ev.target.closest("[data-pf-scan]");
   if(s){
     var adr = s.getAttribute("data-pf-scan");
@@ -1136,6 +1270,11 @@ document.querySelectorAll("[data-pf]").forEach(function(b){
   if(age) age.addEventListener("change", ladePruefstand);
   if(min) min.addEventListener("input", function(){ el("pf-min-val").textContent = this.value; });
   if(min) min.addEventListener("change", ladePruefstand);
+  var cap = el("pf-cap");
+  if(cap) cap.addEventListener("input", function(){
+    el("pf-cap-val").textContent = (PF_CAP[Number(this.value)] || PF_CAP[1]).txt;
+  });
+  if(cap) cap.addEventListener("change", ladePruefstand);
   if(rl) rl.addEventListener("click", ladePruefstand);
   if(auto) auto.addEventListener("change", function(){
     if(PF.timer){ clearInterval(PF.timer); PF.timer = null; }
