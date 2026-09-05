@@ -1244,7 +1244,7 @@ function werKauft(mint){
   var btn = karte && karte.querySelector('[data-pf-wer]');
   if(btn){ btn.disabled = true; btn.textContent = "Prüfe Wallets …"; }
 
-  apiFetch("/api/kaeufer?mint="+encodeURIComponent(mint)+"&minuten=60")
+  apiFetch("/api/tief?was=kaeufer&mint="+encodeURIComponent(mint)+"&minuten=60")
     .then(function(j){
       if(!j || !j.ok){
         if(btn){ btn.disabled = false; btn.textContent = "Wer kauft hier?"; }
@@ -3700,7 +3700,7 @@ function alarmNachschaerfen(card, m){
     .catch(function(){});
 
   // 2. Wer geht sonst noch rein?
-  apiFetch("/api/crowd?mint=" + encodeURIComponent(m.mint) + "&minutes=30")
+  apiFetch("/api/tief?was=crowd&mint=" + encodeURIComponent(m.mint) + "&minutes=30")
     .then(function(j){
       if(!j || !j.ok) return;
       var el3 = box.querySelector("[data-crowdline]");
