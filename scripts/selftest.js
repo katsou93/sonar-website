@@ -2264,6 +2264,15 @@ async function main() {
     assert.ok(/function meldeAufsHandy/.test(appQuelle));
   });
 
+  await check("die fehlenden Variablennamen werden lesbar angezeigt", () => {
+    // Live: im Kasten stand woertlich "TELEGRAM_BOT_TOKEN</code>, <code>",
+    // weil die Trennzeichen mitmaskiert wurden.
+    const f = appQuelle.slice(appQuelle.indexOf("function tgHinweis"));
+    const kopf = f.slice(0, 2200);
+    assert.ok(!/esc\(TG\.fehlt\.join/.test(kopf), "maskiert die eigenen Trennzeichen mit");
+    assert.ok(/TG\.fehlt\.map\(/.test(kopf), "die Namen werden nicht einzeln maskiert");
+  });
+
   await check("die wichtigen Meldungen gehen wirklich raus", () => {
     // Zusammenlauf und Zielerreichung sind die beiden, die dich
     // erreichen muessen, wenn das Fenster zu ist.
