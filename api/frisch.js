@@ -96,6 +96,11 @@ module.exports = async function handler(req, res) {
       organicShareH1: c.organicShareH1,
       devMints: c.devMints,
       devMigrations: c.devMigrations,
+      // Die Adresse des Erstellers geht mit, damit die Oberflaeche sich
+      // Fabriken ueber Coins hinweg merken kann. Wer einmal als Fabrik
+      // aufgefallen ist, soll beim naechsten Coin nicht wieder bei null
+      // anfangen.
+      devAddress: c.devAddress,
       twitter: c.twitter,
       telegram: c.telegram,
       website: c.website,
