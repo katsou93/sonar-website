@@ -978,9 +978,38 @@ function pfZeile(z){
 function pfKarte(c){
   var offen = PF.offen[c.address];
   var tief  = PF.tief[c.address];
-  var checks = (tief && tief.urteil && tief.urteil.checks) || c.checks || [];
-  var punkte = tief && tief.urteil ? tief.urteil.punkte : c.punkte;
-  var ampel  = tief && tief.urteil ? tief.urteil.ampel  : c.ampel;
+
+  // Die Zeilen werden aus ZWEI Quellen zusammengesetzt, und das ist
+  // kein Detail, sondern eine Fehlerbehebung.
+  //
+  // Live passiert: ein Coin wurde bei 3k tief geprüft, stand zwei
+  // Minuten später bei 9,1k — und die Karte zeigte oben den neuen Kurs,
+  // in der Checkliste aber weiter die Sätze von 3k, inklusive
+  // "60,5x drin". Die Tiefprüfung wird zwölf Stunden aufgehoben, weil
+  // ihre Launch-Daten sich nie ändern. Für die Marktzahlen gilt das
+  // genaue Gegenteil.
+  //
+  // Also: die marktabhängigen Zeilen kommen IMMER frisch aus der Liste,
+  // und aus der Tiefprüfung wird nur übernommen, was tatsächlich fest
+  // ist — Launch, Story, selbst gehandelt, wer kauft.
+  var FEST = { bundle: 1, story: 1, wash: 1, kaeufer: 1 };
+  var extra = (tief && tief.urteil && tief.urteil.checks || []).filter(function(z){
+    return FEST[z.schluessel];
+  });
+  var checks = (c.checks || []).concat(extra);
+
+  // Die Punktzahl folgt derselben Regel: frisch gerechnet, plus das,
+  // was die Tiefprüfung dauerhaft beisteuert.
+  var punkte = c.punkte;
+  var ampel  = c.ampel;
+  if(tief && tief.urteil){
+    extra.forEach(function(z){ punkte += (z.punkte || 0); });
+    punkte = Math.max(0, Math.min(100, Math.round(punkte)));
+    // Ein bewiesenes Bundle und ein bewiesen gemachter Chart bleiben
+    // rot, egal wie gut die Marktzahlen inzwischen aussehen.
+    ampel = (tief.urteil.gebuendelt || tief.urteil.gemacht) ? "rot"
+          : punkte >= 62 ? "gruen" : punkte >= 42 ? "gelb" : "rot";
+  }
 
   // Das wiederverwendete X-Konto kann nur der Browser wissen - er fuehrt
   // die Historie. Deshalb wird diese Zeile hier angehaengt und nicht
