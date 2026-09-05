@@ -1748,7 +1748,14 @@ async function main() {
   await check("ein sauberer frischer Coin kommt gruen durch", () => {
     const u = ps.freiesUrteil(guterCoin);
     assert.strictEqual(u.ampel, "gruen");
-    assert.strictEqual(u.checks.length, 10);
+    // Die Checkliste ist ueber die Zeit gewachsen - festgenagelt wird
+    // nicht die Anzahl, sondern dass jede Frage genau einmal
+    // vorkommt. Eine doppelte Zeile waere ein echter Fehler.
+    const namen = u.checks.map((z) => z.schluessel);
+    assert.strictEqual(new Set(namen).size, namen.length, "doppelte Zeile: " + namen.join(","));
+    for (const pflicht of ["fenster", "platz", "ausstieg", "verteilung", "echt", "fluss", "gemacht", "halter", "dev", "rechte", "socials", "alter"]) {
+      assert.ok(namen.indexOf(pflicht) >= 0, "Zeile fehlt: " + pflicht);
+    }
   });
 
   await check("aktive Nachdruck-Rechte machen alles andere egal", () => {
@@ -1960,6 +1967,249 @@ async function main() {
   });
 
   // ---------------------------------------------------------------
+  // Gemachte Charts
+  // ---------------------------------------------------------------
+  console.log("\nGemachte Charts");
+  const wa = require("../api/_lib/wash");
+
+  await check("achthundert Trades von zwoelf Haendlern ist keine Menschenmenge", () => {
+    const w = wa.washFrei({ buysH1: 500, sellsH1: 300, tradersH1: 12, volumeH1: 50000, marketCap: 30000 });
+    const b = w.befunde.find((x) => x.art === "prokopf");
+    assert.ok(b, "kein Pro-Kopf-Befund");
+    assert.strictEqual(b.stufe, "schlecht");
+    assert.strictEqual(b.wert, 67);
+  });
+
+  await check("zweihundert Trades von hundertfuenfzig Haendlern ist normal", () => {
+    const w = wa.washFrei({ buysH1: 120, sellsH1: 80, tradersH1: 150, volumeH1: 50000, marketCap: 30000, holderChangeH1: 40 });
+    assert.strictEqual(w.befunde.filter((x) => x.art === "prokopf").length, 0);
+  });
+
+  await check("Umsatz ohne einen einzigen neuen Halter faellt auf", () => {
+    const w = wa.washFrei({ buysH1: 60, sellsH1: 60, tradersH1: 90, volumeH1: 40000, marketCap: 30000, holderChangeH1: 0 });
+    assert.ok(w.befunde.some((x) => x.art === "ohnehalter"));
+  });
+
+  await check("Umsatz MIT Halterzuwachs faellt nicht auf", () => {
+    const w = wa.washFrei({ buysH1: 60, sellsH1: 60, tradersH1: 90, volumeH1: 40000, marketCap: 30000, holderChangeH1: 45 });
+    assert.strictEqual(w.befunde.filter((x) => x.art === "ohnehalter").length, 0);
+  });
+
+  await check("wenig Handel wird nicht vorschnell verdaechtigt", () => {
+    const w = wa.washFrei({ buysH1: 8, sellsH1: 2, tradersH1: 1, volumeH1: 900, marketCap: 12000 });
+    assert.strictEqual(w.stufe, "unauffaellig");
+  });
+
+  const bew = (wallet, seite, sol, zeit) => ({ wallet: wallet, seite: seite, sol: sol, zeit: zeit });
+
+  await check("wer hin und her handelt, wird als Rundlaeufer erkannt", () => {
+    const liste = [
+      bew("A", "kauf", 1, 100), bew("A", "verkauf", 1, 110),
+      bew("A", "kauf", 1, 120), bew("A", "verkauf", 1, 130),
+      bew("B", "kauf", 1, 140),
+    ];
+    const r = wa.rundlaeufer(liste);
+    assert.strictEqual(r.anzahl, 1);
+    assert.strictEqual(r.wallets[0].wallet, "A");
+    assert.strictEqual(r.wallets[0].wechsel, 3);
+  });
+
+  await check("wer einmal kauft und einmal verkauft, ist kein Rundlaeufer", () => {
+    const r = wa.rundlaeufer([bew("A", "kauf", 1, 100), bew("A", "verkauf", 1, 200)]);
+    assert.strictEqual(r.anzahl, 0);
+  });
+
+  await check("die Reihenfolge wird chronologisch gelesen, nicht wie geliefert", () => {
+    // Helius liefert neueste zuerst - unsortiert waeren die Wechsel falsch.
+    const liste = [
+      bew("A", "verkauf", 1, 130), bew("A", "kauf", 1, 120),
+      bew("A", "verkauf", 1, 110), bew("A", "kauf", 1, 100),
+    ];
+    assert.strictEqual(wa.rundlaeufer(liste).wallets[0].wechsel, 3);
+  });
+
+  await check("der Umsatzanteil der Rundlaeufer wird ausgewiesen", () => {
+    const liste = [
+      bew("A", "kauf", 4, 100), bew("A", "verkauf", 4, 110),
+      bew("A", "kauf", 4, 120), bew("A", "verkauf", 4, 130),
+      bew("B", "kauf", 4, 140),
+    ];
+    const r = wa.rundlaeufer(liste);
+    assert.strictEqual(r.anteilProzent, 80);
+  });
+
+  await check("drei Rundlaeufer machen aus dem Verdacht einen Beweis", () => {
+    const tief = { anzahl: 3, anteilProzent: 55, haendlerGesamt: 9, wallets: [] };
+    const u = wa.washUrteil({ befunde: [], stufe: "unauffaellig" }, tief);
+    assert.strictEqual(u.stufe, "gemacht");
+    assert.strictEqual(u.gruende[0].beweis, true);
+    assert.ok(/Herstellung/.test(u.gruende[0].text));
+  });
+
+  await check("keine Rundlaeufer ist eine gute Nachricht und wird auch so gesagt", () => {
+    const u = wa.washUrteil({ befunde: [], stufe: "unauffaellig" }, { anzahl: 0, haendlerGesamt: 40, wallets: [] });
+    assert.strictEqual(u.stufe, "sauber");
+    assert.ok(/echt/.test(u.gruende[0].text));
+  });
+
+  await check("ein bewiesener gemachter Chart macht die Ampel rot", () => {
+    const frei = ps.freiesUrteil(guterCoin);
+    const g = ps.gesamtUrteil(frei, { verfuegbar: true, stufe: "sauber", gruende: ["offen"] }, null, {
+      wash: { stufe: "gemacht", gruende: [{ text: "3 Wallets schieben hin und her.", beweis: true, stufe: "schlecht" }] },
+    });
+    assert.strictEqual(g.ampel, "rot");
+    assert.strictEqual(g.gemacht, true);
+  });
+
+  // ---------------------------------------------------------------
+  // Wer kauft
+  // ---------------------------------------------------------------
+  console.log("\nKaeufer-Analyse");
+  const ka = require("../api/_lib/kaeufer");
+
+  await check("drei Wallets mit exakt gleichem Betrag sind eine Gruppe", () => {
+    const c = ka.clusterUnter([
+      { wallet: "A", seite: "kauf", sol: 0.4321, slot: 1 },
+      { wallet: "B", seite: "kauf", sol: 0.4321, slot: 2 },
+      { wallet: "C", seite: "kauf", sol: 0.4321, slot: 3 },
+      { wallet: "D", seite: "kauf", sol: 0.9, slot: 4 },
+    ]);
+    assert.strictEqual(c.betragGruppen.length, 1);
+    assert.strictEqual(c.wallets.length, 3);
+    assert.ok(c.wallets.indexOf("D") < 0);
+  });
+
+  await check("drei Wallets im selben Block sind eine Gruppe", () => {
+    const c = ka.clusterUnter([
+      { wallet: "A", seite: "kauf", sol: 0.4, slot: 77 },
+      { wallet: "B", seite: "kauf", sol: 0.7, slot: 77 },
+      { wallet: "C", seite: "kauf", sol: 1.2, slot: 77 },
+    ]);
+    assert.strictEqual(c.slotGruppen.length, 1);
+    assert.strictEqual(c.wallets.length, 3);
+  });
+
+  await check("zwei zufaellig gleiche Betraege sind noch keine Gruppe", () => {
+    const c = ka.clusterUnter([
+      { wallet: "A", seite: "kauf", sol: 0.5, slot: 1 },
+      { wallet: "B", seite: "kauf", sol: 0.5, slot: 2 },
+    ]);
+    assert.strictEqual(c.wallets.length, 0);
+  });
+
+  await check("sechzig Coins in zwei Stunden zu zwei Cent ist eine Schrotflinte", () => {
+    const txs = [];
+    for (let i = 0; i < 60; i++) {
+      txs.push({
+        feePayer: "W", timestamp: 1000 + i * 120, signature: "s" + i,
+        tokenTransfers: [{ mint: "M" + i, toUserAccount: "W", tokenAmount: 100 }],
+        nativeTransfers: [{ fromUserAccount: "W", toUserAccount: "P", amount: 20000000 }],
+      });
+    }
+    const b = ka.botMerkmale(txs, "W");
+    assert.strictEqual(b.messbar, true);
+    assert.strictEqual(b.bot, true);
+    assert.strictEqual(b.coins, 60);
+  });
+
+  await check("schnell handeln allein macht noch keinen Bot", () => {
+    // Gleiches Tempo, aber ernsthafte Positionen statt Centbetraegen.
+    const txs = [];
+    for (let i = 0; i < 60; i++) {
+      txs.push({
+        feePayer: "W", timestamp: 1000 + i * 120, signature: "s" + i,
+        tokenTransfers: [{ mint: "M" + i, toUserAccount: "W", tokenAmount: 100 }],
+        nativeTransfers: [{ fromUserAccount: "W", toUserAccount: "P", amount: 2000000000 }],
+      });
+    }
+    assert.strictEqual(ka.botMerkmale(txs, "W").bot, false);
+  });
+
+  await check("zu wenige Bewegungen ergeben kein Bot-Urteil", () => {
+    assert.strictEqual(ka.botMerkmale([], "W").messbar, false);
+  });
+
+  await check("das Cluster-Urteil sticht die Bilanz", () => {
+    const u = ka.walletUrteil({ genug: true, quote: 90, trades: 20, median: 3, muster: "treffer", sechsfach: 5, haltMin: 200 }, null, true);
+    assert.strictEqual(u.stufe, "schlecht");
+    assert.strictEqual(u.wort, "Cluster");
+  });
+
+  await check("ein Bot mit guter Bilanz bleibt ein Bot", () => {
+    const u = ka.walletUrteil(
+      { genug: true, quote: 90, trades: 20, median: 3, muster: "treffer", sechsfach: 5, haltMin: 200 },
+      { bot: true, coins: 60, spanneStd: 2, medianSol: 0.02 }, false,
+    );
+    assert.strictEqual(u.stufe, "schlecht");
+    assert.strictEqual(u.wort, "Bot");
+  });
+
+  await check("ein Dumper wird beim Namen genannt", () => {
+    const u = ka.walletUrteil(
+      { genug: true, quote: 80, trades: 20, median: 2, muster: "dumper", sechsfach: 1, haltMin: 4 },
+      { bot: false }, false,
+    );
+    assert.strictEqual(u.stufe, "schlecht");
+    assert.ok(/Abnehmer/.test(u.text));
+  });
+
+  await check("eine Wallet, die versechsfacht und verkauft, ist die gesuchte Sorte", () => {
+    const u = ka.walletUrteil(
+      { genug: true, quote: 60, trades: 15, median: 2.2, muster: "treffer", sechsfach: 4, haltMin: 180 },
+      { bot: false }, false,
+    );
+    assert.strictEqual(u.stufe, "gut");
+    assert.ok(/versechsfacht/.test(u.text));
+  });
+
+  await check("zu wenig Daten wird als zu wenig Daten gemeldet", () => {
+    const u = ka.walletUrteil({ genug: false, trades: 2, offen: 5 }, { bot: false }, false);
+    assert.strictEqual(u.stufe, "unbekannt");
+  });
+
+  await check("Unterkonten machen eine Wallet unlesbar, nicht schlecht", () => {
+    const u = ka.walletUrteil({ genug: false, muster: "unlesbar" }, { bot: false }, false);
+    assert.strictEqual(u.stufe, "unbekannt");
+    assert.strictEqual(u.wort, "Unlesbar");
+  });
+
+  await check("eine gute Wallet im Coin hebt das Gesamturteil", () => {
+    const frei = ps.freiesUrteil(guterCoin);
+    const ohne = ps.gesamtUrteil(frei, { verfuegbar: false, stufe: "unbekannt", gruende: [] }, null, {});
+    const mit = ps.gesamtUrteil(frei, { verfuegbar: false, stufe: "unbekannt", gruende: [] }, null, {
+      kaeufer: { verfuegbar: true, gute: 1, schlecht: 0, clusterWallets: 0, gruende: ["Eine gute Wallet ist drin."] },
+    });
+    assert.ok(mit.punkte >= ohne.punkte);
+    assert.ok(mit.checks.some((z) => z.schluessel === "kaeufer" && z.stufe === "gut"));
+  });
+
+  // ---------------------------------------------------------------
+  // Das Zielfenster 5k bis 40k
+  // ---------------------------------------------------------------
+  console.log("\nZielfenster");
+
+  await check("das Fenster ist 5k bis 40k", () => {
+    assert.strictEqual(ps.FOKUS_UNTEN, 5000);
+    assert.strictEqual(ps.FOKUS_OBEN, 40000);
+  });
+
+  await check("ein Coin im Fenster bekommt dafuer Punkte", () => {
+    const z = ps.checkFenster({ marketCap: 22000 });
+    assert.strictEqual(z.stufe, "gut");
+    assert.strictEqual(z.beweis, true);
+  });
+
+  await check("ueber 40k faellt der Coin aus dem Fenster", () => {
+    assert.strictEqual(ps.checkFenster({ marketCap: 90000 }).stufe, "schlecht");
+  });
+
+  await check("unter 5k ist zu frueh, nicht zu billig", () => {
+    const z = ps.checkFenster({ marketCap: 2000 });
+    assert.strictEqual(z.stufe, "mittel");
+    assert.ok(/Zu frueh/.test(z.text));
+  });
+
+  // ---------------------------------------------------------------
   // Verdrahtung der Oberflaeche
   // ---------------------------------------------------------------
   console.log("\nOberflaeche: Pruefstand ist verdrahtet");
@@ -2000,6 +2250,33 @@ async function main() {
   await check("die automatische Tiefpruefung ist auf drei Coins gedeckelt", () => {
     const f = appQuelle.slice(appQuelle.indexOf("function pfAutoTief"));
     assert.ok(/slice\(0,\s*3\)/.test(f.slice(0, 500)), "Deckel auf drei fehlt");
+  });
+
+  await check("das Zielfenster steht als Regler in der Oberflaeche", () => {
+    assert.ok(/id="pf-cap"/.test(appQuelle));
+    assert.ok(/\$5k – \$40k/.test(appQuelle), "Standardbeschriftung 5k-40k fehlt");
+    assert.ok(/minMcap=/.test(appQuelle) && /maxMcap=/.test(appQuelle));
+  });
+
+  await check("es gibt einen eigenen Knopf fuer die Kaeuferpruefung", () => {
+    assert.ok(/data-pf-wer/.test(appQuelle));
+    assert.ok(/function werKauft/.test(appQuelle));
+    assert.ok(/\/api\/kaeufer\?mint=/.test(appQuelle));
+  });
+
+  await check("jede Wallet wird nur einmal geprueft", () => {
+    const f = appQuelle.slice(appQuelle.indexOf("function werKauft"));
+    assert.ok(/if\(PF\.wer\[mint\]\)\s*return;/.test(f.slice(0, 300)));
+  });
+
+  await check("die Wallet-Urteile sind farblich unterscheidbar", () => {
+    for (const k of [".w-gut", ".w-schlecht", ".w-mittel", ".w-unbekannt"]) {
+      assert.ok(appQuelle.indexOf(k) >= 0, "fehlt: " + k);
+    }
+  });
+
+  await check("Adressen werden gekuerzt angezeigt", () => {
+    assert.ok(/function kurz\(/.test(appQuelle));
   });
 
   await check("jeder Coin wird nur einmal tief geprueft", () => {
