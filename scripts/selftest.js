@@ -1859,6 +1859,54 @@ async function main() {
     assert.ok(ps.freiesUrteil(c).punkte > ps.DECKEL_PUNKTE);
   });
 
+  await check("0% organisch bei einem zwei Minuten alten Coin heisst noch nicht, nicht null", () => {
+    const z = ps.freiesUrteil(Object.assign({}, guterCoin, { organicShareH1: 0, ageMinutes: 2 }))
+      .checks.find((x) => x.schluessel === "echt");
+    assert.strictEqual(z.stufe, "unbekannt");
+    assert.ok(/Zu jung/.test(z.text));
+  });
+
+  await check("0% organisch bei einem alten Coin bleibt eine schlechte Nachricht", () => {
+    const z = ps.freiesUrteil(Object.assign({}, guterCoin, { organicShareH1: 0, ageMinutes: 600 }))
+      .checks.find((x) => x.schluessel === "echt");
+    assert.strictEqual(z.stufe, "schlecht");
+  });
+
+  // Der schlimmste Fehler der ersten Fassung: Farbe und Text sagten
+  // Verschiedenes. Gelbe Ampel neben "Der Start war offen", gruene neben
+  // "Beschreibung nicht abrufbar".
+  await check("die Launch-Zeile zeigt den Satz, der das Urteil traegt", () => {
+    const u = bu.urteilen(Object.assign({}, basis, {
+      bundleWallets: 0, bundleAnteil: null, sniperWallets: 40,
+    }));
+    assert.strictEqual(u.stufe, "auffaellig");
+    assert.ok(/Sekunden drin/.test(u.kern), "Kernsatz ist: " + u.kern);
+    assert.strictEqual(u.gruende[0], u.kern, "der tragende Satz muss vorn stehen");
+  });
+
+  await check("ohne Verschlechterung traegt der erste Satz das Urteil", () => {
+    const u = bu.urteilen(Object.assign({}, basis, { bundleWallets: 0 }));
+    assert.strictEqual(u.stufe, "sauber");
+    assert.ok(/offen/.test(u.kern));
+  });
+
+  await check("die Story-Zeile zeigt den Satz, der das Urteil traegt", () => {
+    const u = st.storyUrteil(
+      { name: "T", symbol: "T", twitter: "https://x.com/wer/status/1" },
+      { unbekannt: true }, [], null,
+    );
+    assert.ok(/Beitrag/.test(u.kern), "Kernsatz ist: " + u.kern);
+    assert.strictEqual(u.gruende[0], u.kern);
+  });
+
+  await check("die Farbe der Launch-Zeile passt zum angezeigten Satz", () => {
+    const bundle = bu.urteilen(Object.assign({}, basis, { bundleWallets: 0, sniperWallets: 40 }));
+    const g = ps.gesamtUrteil(ps.freiesUrteil(guterCoin), Object.assign({ verfuegbar: true }, bundle), null);
+    const z = g.checks.find((x) => x.schluessel === "bundle");
+    assert.strictEqual(z.stufe, "mittel");
+    assert.ok(/Sekunden drin/.test(z.text), "gezeigt wird: " + z.text);
+  });
+
   await check("der Platz nach oben rechnet gegen das beobachtete Gipfelfenster", () => {
     const p = ps.platzNachOben(20000);
     assert.strictEqual(Math.round(p.bisTypisch), 9);
