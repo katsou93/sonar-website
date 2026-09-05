@@ -154,6 +154,14 @@ main{padding:26px 0 80px}
 .w-mittel{background:rgba(255,197,49,.12);color:var(--yel)}
 .w-unbekannt{background:rgba(255,255,255,.05);color:var(--mu2)}
 .pfwtext{font-size:12.5px;color:var(--mu);line-height:1.55;flex:1 1 100%}
+.pfmark{font-size:10px;font-family:var(--mono);letter-spacing:.05em;padding:1px 6px;border-radius:4px;flex:0 0 auto}
+.m-best{background:rgba(153,69,255,.16);color:#c79bff}
+.m-sperr{background:rgba(255,77,106,.14);color:var(--red)}
+.m-gut{background:rgba(20,241,149,.14);color:var(--grn)}
+.m-mit{background:rgba(255,197,49,.14);color:var(--yel)}
+.pfzus{margin:2px 0 12px;padding:11px 14px;border-radius:10px;font-size:13.5px;line-height:1.55;
+  background:rgba(20,241,149,.09);border:1px solid rgba(20,241,149,.32);color:var(--tx)}
+.pfmerk{margin-top:10px;font-size:12.5px;color:var(--mu);line-height:1.55}
 .fit{display:flex;flex-direction:column;gap:10px}
 .fitrow{padding:13px;border-radius:10px;border:1px solid var(--border)}
 .fitrow.yes{border-color:rgba(20,241,149,.3);background:rgba(20,241,149,.05)}
@@ -1108,6 +1116,12 @@ function pfWerBlock(k){
       esc((k && k.grund) || "Nicht prüfbar.")+'</div></div>';
   }
   var out = '<div class="pftief"><h4>Wer kauft hier · letzte '+(k.fenster||60)+' Minuten</h4>';
+
+  // Der Zusammenlauf zuerst - wenn er da ist, ist er die Nachricht.
+  if(k.zusammenlauf){
+    out += '<div class="pfzus">★ '+esc(k.zusammenlauf.text)+'</div>';
+  }
+
   out += '<div class="pfmess">'+
     '<span>Käufer: <b>'+(k.kaeufer||0)+'</b></span>'+
     '<span>davon ernsthaft: <b>'+(k.ernsthaft||0)+'</b></span>'+
@@ -1121,14 +1135,33 @@ function pfWerBlock(k){
       '"></span><span class="pfzt">'+esc(g)+'</span></div>';
   }).join("");
 
+  if(k.bestand && (k.bestand.neu || k.bestand.gesperrt)){
+    out += '<div class="pfmerk">Gemerkt: '+
+      (k.bestand.neu ? '<b class="up">'+k.bestand.neu+' neu in Beobachtung</b>' : '')+
+      (k.bestand.neu && k.bestand.gesperrt ? ' · ' : '')+
+      (k.bestand.gesperrt ? '<b class="dn">'+k.bestand.gesperrt+' gesperrt</b>' : '')+
+      '. Die Wache fragt ab jetzt von allein nach, was die Beobachteten kaufen.</div>';
+  }
+
   if((k.wallets||[]).length){
     out += '<div class="pfwal">'+k.wallets.map(function(w){
       var u = w.urteil || {};
+      var r = ROSTER.wallets[w.wallet];
+      var v = vorlaufVon(w.wallet);
+      var marken = "";
+      if(r && r.status === "aktiv") marken += '<span class="pfmark m-best">IM BESTAND</span>';
+      if(sperreVon(w.wallet)) marken += '<span class="pfmark m-sperr">GESPERRT</span>';
+      if(v.median != null){
+        // Die einzige Zahl, die wirklich sagt, ob Folgen sich lohnt.
+        marken += '<span class="pfmark '+(v.median>=2?"m-gut":v.median>=1.3?"m-mit":"m-sperr")+'">'+
+          'VORLAUF '+v.median+'x ('+v.faelle+')</span>';
+      }
       return '<div class="pfwrow2">'+
         '<span class="pfwdot z-'+esc(u.stufe||"unbekannt")+'"></span>'+
         '<code>'+esc(kurz(w.wallet))+'</code>'+
         '<span class="pfwsol">'+w.sol+' SOL</span>'+
         '<span class="pfwwort w-'+esc(u.stufe||"unbekannt")+'">'+esc(u.wort||"?")+'</span>'+
+        marken+
         '<span class="pfwtext">'+esc(u.text||"")+'</span>'+
       '</div>';
     }).join("")+'</div>';
@@ -1218,6 +1251,14 @@ function werKauft(mint){
         return;
       }
       PF.wer[mint] = j;
+      // Und jetzt der Teil, der aus einer Anzeige ein System macht:
+      // alles Gelernte wird behalten. Die Guten kommen in Beobachtung,
+      // die Schlechten auf die Sperrliste, der Kurs wird als Messpunkt
+      // festgehalten. Ab hier fragt die Wache von allein nach, was
+      // diese Leute als naechstes kaufen.
+      var coin = PF.coins.find(function(x){ return x.address === mint; });
+      j.bestand = rosterAusKaeufer(mint, j, coin);
+      j.zusammenlauf = zusammenlaufPruefen(mint, j, coin);
       pfNeuZeichnen(mint);
     })
     .catch(function(e){
@@ -1829,11 +1870,21 @@ function bestandBox(){
     var eigen = r.meldungen >= 4
       ? ' · <b>'+Math.round((r.treffer/r.meldungen)*100)+'%</b> von '+r.meldungen+' Meldungen erreichten '+ZIEL_X+'×'
       : (r.meldungen ? ' · '+r.meldungen+' Meldungen, noch keine Auswertung' : '');
+    // Der gemessene Vorlauf gehoert hierher und nicht ins Kleingedruckte:
+    // er ist die Antwort auf "bringt es etwas, diesem Menschen zu folgen".
+    var v = r.vorlauf;
+    var vorlaufTxt = v && v.median != null
+      ? '<div class="det"><b style="color:'+(v.median>=2?"var(--grn)":v.median>=1.3?"var(--yel)":"var(--red)")+'">'+
+        'Vorlauf '+v.median+'×</b> — so viel war nach seinem Einstieg im Median noch drin ('+v.faelle+' gemessene Fälle)</div>'
+      : '<div class="det mu2">Vorlauf noch nicht gemessen — dafür braucht es '+VORLAUF_MIN_FAELLE+' Fälle über zwei Tage</div>';
     return '<div class="scout '+esc(r.kind||"klein")+'">'+
       '<div class="hits">'+Math.round(rosterRang(r))+'</div>'+
       '<div style="min-width:0"><div class="adr">'+esc(shortAddr(r.wallet))+
-        '<span class="kind '+esc(r.kind||"klein")+'">'+esc(KIND_LABEL[r.kind]||r.kind||"")+'</span></div>'+
+        '<span class="kind '+esc(r.kind||"klein")+'">'+esc(KIND_LABEL[r.kind]||r.kind||"")+'</span>'+
+        (r.quelle === "kaeufer" ? '<span class="kind" style="background:rgba(153,69,255,.16);color:#c79bff">aus Käuferprüfung</span>' : '')+
+        '</div>'+
         '<div class="det">'+esc(r.grund||"")+'</div>'+
+        vorlaufTxt+
         '<div class="det">seit '+tageHer(r.seit)+' im Bestand'+eigen+'</div>'+
       '</div>'+
       '<button class="btn btn-g btn-sm" data-follow="'+esc(r.wallet)+'">verfolgen</button>'+
@@ -3142,6 +3193,19 @@ function rosterAufraeumen(){
 function rosterRang(r){
   var b = r.bilanz || {};
   var basis = (b.quote || 0) + (b.sechsfach || 0) * 5 + (b.muster === "geduldig" ? 10 : 0);
+
+  // Drei Beweisstufen, und die stärkste gewinnt.
+  //
+  // 1. GEMESSENER VORLAUF. Wie viel war nach seinem Einstieg noch drin?
+  //    Das ist die einzige Zahl, die die Frage beantwortet, um die es
+  //    hier wirklich geht - alles andere beantwortet nur, ob DIESE
+  //    PERSON Geld verdient, nicht ob DU es tust, wenn du ihr folgst.
+  // 2. Was deine eigenen Meldungen zu ihm gebracht haben.
+  // 3. Seine Bilanz. Am schwächsten, weil sie über dich nichts sagt.
+  var v = r.vorlauf;
+  if(v && v.median != null && v.faelle >= VORLAUF_MIN_FAELLE){
+    return v.median * 60 + basis * 0.3;
+  }
   if((r.meldungen || 0) >= 4){
     var eigen = (r.treffer / r.meldungen) * 100;
     return eigen * 2 + basis * 0.5;
@@ -3156,6 +3220,260 @@ function rosterFaellig(){
     .filter(function(r){ return r.status === "aktiv" && (r.geprueft||0) < grenze; })
     .slice(0, 5)
     .map(function(r){ return r.wallet; });
+}
+
+/* =====================================================================
+   DAS GEDAECHTNIS FUER WALLETS
+
+   Bisher lief die Kaeuferpruefung ins Leere: sie fand eine Wallet mit
+   guter Bilanz, schrieb einen Satz auf den Bildschirm - und beim
+   naechsten Aufruf war das wieder vergessen. Jede Erkenntnis wurde
+   genau einmal benutzt und dann weggeworfen.
+
+   Hier wird sie behalten, und zwar in beide Richtungen:
+
+     Bestand   Wer die Bilanz besteht, wandert in die Beobachtung. Die
+               Wache fragt danach automatisch nach, was diese Leute als
+               naechstes kaufen - und DAS ist der Vorlauf, um den es
+               geht: nicht ein Coin, der schon laeuft, sondern einer,
+               in den gerade jemand eingestiegen ist, der weiss was er
+               tut.
+     Sperre    Bots, Dumper und Cluster werden ebenso gemerkt. Nicht
+               aus Nachtragen, sondern aus zwei sehr praktischen
+               Gruenden: sie tauchen staendig wieder auf, und jede
+               erneute Pruefung kostet Guthaben.
+
+   Und dann die Zahl, die das Ganze erst ehrlich macht.
+   ===================================================================== */
+
+var SPERRE = {};
+try {
+  var sroh = localStorage.getItem("sonar_sperre");
+  if(sroh) SPERRE = JSON.parse(sroh) || {};
+} catch(e){}
+
+var SPERRE_MAX = 300;
+
+function sperreSave(){
+  try {
+    var keys = Object.keys(SPERRE);
+    if(keys.length > SPERRE_MAX){
+      // Die aeltesten zuerst vergessen - Menschen aendern sich, Bots
+      // bekommen neue Adressen, und der Speicher ist endlich.
+      keys.sort(function(a,b){ return (SPERRE[a].wann||0) - (SPERRE[b].wann||0); });
+      keys.slice(0, keys.length - SPERRE_MAX).forEach(function(k){ delete SPERRE[k]; });
+    }
+    localStorage.setItem("sonar_sperre", JSON.stringify(SPERRE));
+  } catch(e){}
+}
+
+function sperreSetzen(wallet, wort, grund, mint){
+  if(!wallet) return;
+  var e = SPERRE[wallet] || { coins: [], gesehen: 0 };
+  e.wort = wort; e.grund = grund; e.wann = Date.now();
+  e.gesehen = (e.gesehen || 0) + 1;
+  if(mint && e.coins.indexOf(mint) < 0){
+    e.coins.push(mint);
+    if(e.coins.length > 8) e.coins = e.coins.slice(-8);
+  }
+  SPERRE[wallet] = e;
+  sperreSave();
+}
+
+function sperreVon(wallet){ return SPERRE[wallet] || null; }
+
+/* ---- Der Vorlauf ----------------------------------------------------
+
+   Die unbequeme Frage, die dieses Werkzeug sich selbst stellen muss:
+   BRINGT es ueberhaupt etwas, diesen Leuten zu folgen?
+
+   Eine gute Bilanz beweist nur, dass jemand fuer sich Geld verdient.
+   Sie beweist nicht, dass davon noch etwas uebrig ist, wenn DU seinen
+   Kauf siehst. Wenn er bei 8k einsteigt und der Coin bei 12k steht,
+   sobald er in deiner Liste auftaucht, ist er ein guter Trader und
+   trotzdem nutzlos als Signal.
+
+   Also wird es gemessen: in dem Moment, in dem eine Bestandswallet in
+   einem Coin auftaucht, wird der Kurs festgehalten. Zwei Tage lang
+   wird nachgesehen, wie weit er noch gekommen ist. Der Median ueber
+   alle Faelle einer Wallet ist ihr Vorlauf - und das ist die einzige
+   Zahl, die wirklich sagt, ob sich das Folgen lohnt.
+
+   Eine Wallet mit 90% Trefferquote und Vorlauf 1,1 ist wertlos.
+   Eine mit 45% Trefferquote und Vorlauf 4 ist Gold.                    */
+
+var VORLAUF = { faelle: [] };
+try {
+  var vroh = localStorage.getItem("sonar_vorlauf");
+  if(vroh) VORLAUF = Object.assign(VORLAUF, JSON.parse(vroh) || {});
+} catch(e){}
+
+var VORLAUF_STUNDEN = 48;
+var VORLAUF_MIN_FAELLE = 3;
+
+function vorlaufSave(){
+  try {
+    if(VORLAUF.faelle.length > 200) VORLAUF.faelle = VORLAUF.faelle.slice(-200);
+    localStorage.setItem("sonar_vorlauf", JSON.stringify(VORLAUF));
+  } catch(e){}
+}
+
+/** Einen Fall aufnehmen: diese Wallets waren hier drin, zu diesem Kurs. */
+function vorlaufMerken(mint, preis, wallets){
+  if(!mint || !(preis > 0) || !wallets || !wallets.length) return;
+  // Pro Coin nur einmal - wer zweimal hinschaut, verdoppelt sonst seine
+  // eigene Statistik.
+  if(VORLAUF.faelle.some(function(f){ return f.mint === mint; })) return;
+  VORLAUF.faelle.push({
+    mint: mint, preis: preis, ts: Date.now(),
+    wallets: wallets.slice(0, 6), maxX: 1, ergebnis: null
+  });
+  vorlaufSave();
+}
+
+/**
+ * Nachsehen, was aus den offenen Faellen geworden ist.
+ *
+ * Kostet nichts - /api/quote ist Jupiter, kein Helius. Laeuft im selben
+ * Takt wie die Lernschleife.
+ */
+function vorlaufPruefen(){
+  var jetzt = Date.now();
+  var offen = VORLAUF.faelle.filter(function(f){
+    return f.ergebnis == null && f.preis && (jetzt - f.ts) < VORLAUF_STUNDEN*3600*1000;
+  }).slice(-25);
+  if(!offen.length) return;
+
+  apiFetch("/api/quote?mints=" + encodeURIComponent(offen.map(function(f){ return f.mint; }).join(",")))
+    .then(function(j){
+      if(!j || !j.ok) return;
+      var kurse = {};
+      (j.quotes||[]).forEach(function(q){ kurse[q.mint] = q.priceUsd; });
+      offen.forEach(function(f){
+        var p = kurse[f.mint];
+        var alter = jetzt - f.ts;
+        if(p && f.preis){
+          var x = p / f.preis;
+          if(x > (f.maxX || 1)) f.maxX = Math.round(x * 100) / 100;
+        }
+        // Kein Kurs mehr nach zwei Stunden heisst: der Coin ist tot.
+        // Das ist ein Ergebnis, kein fehlender Wert - und es muss der
+        // Wallet angerechnet werden, sonst misst man nur die Gewinner.
+        if(!p && alter > 2*3600*1000) f.ergebnis = "tot";
+        else if(alter > VORLAUF_STUNDEN*3600*1000) f.ergebnis = "fertig";
+      });
+      vorlaufSave();
+      vorlaufInRoster();
+    })
+    .catch(function(){});
+}
+
+/** Der gemessene Vorlauf einer Wallet: Median ueber die fertigen Faelle. */
+function vorlaufVon(wallet){
+  var xs = VORLAUF.faelle
+    .filter(function(f){ return f.ergebnis != null && f.wallets.indexOf(wallet) >= 0; })
+    .map(function(f){ return f.ergebnis === "tot" ? 0 : (f.maxX || 1); })
+    .sort(function(a,b){ return a - b; });
+  if(xs.length < VORLAUF_MIN_FAELLE) return { faelle: xs.length, median: null };
+  var m = Math.floor(xs.length / 2);
+  var med = xs.length % 2 ? xs[m] : (xs[m-1] + xs[m]) / 2;
+  return { faelle: xs.length, median: Math.round(med * 100) / 100 };
+}
+
+/** Die gemessenen Werte in den Bestand zurueckschreiben. */
+function vorlaufInRoster(){
+  var geaendert = false;
+  rosterListe().forEach(function(r){
+    var v = vorlaufVon(r.wallet);
+    if(v.median == null) return;
+    var alt = ROSTER.wallets[r.wallet];
+    if(!alt) return;
+    if(!alt.vorlauf || alt.vorlauf.median !== v.median || alt.vorlauf.faelle !== v.faelle){
+      alt.vorlauf = v;
+      geaendert = true;
+    }
+    // Der Rauswurf, der auf Messung beruht statt auf Meinung: wer
+    // mehrfach gemessen wurde und im Median nicht einmal die Haelfte
+    // deines Ziels hergibt, ist als Signal wertlos - egal wie gut
+    // seine eigene Bilanz aussieht.
+    if(v.faelle >= 5 && v.median < 1.3 && alt.status === "aktiv"){
+      alt.status = "abgelehnt";
+      alt.grund = "gemessener Vorlauf nur " + v.median + "x über " + v.faelle + " Fälle — als Signal wertlos";
+      geaendert = true;
+    }
+  });
+  if(geaendert) rosterSave();
+}
+
+/**
+ * Die Kaeuferpruefung in den Bestand einspeisen.
+ *
+ * Das ist die Stelle, an der aus einer einmaligen Anzeige ein System
+ * wird. Alles, was die Pruefung herausgefunden hat, wird behalten:
+ * die Guten kommen in Beobachtung, die Schlechten auf die Sperrliste,
+ * und der Kurs des Coins wird als Messpunkt festgehalten.
+ */
+function rosterAusKaeufer(mint, bild, coin){
+  if(!bild || !bild.verfuegbar || !bild.wallets) return { neu: 0, gesperrt: 0 };
+  var neu = 0, gesperrt = 0;
+  var gute = [];
+
+  bild.wallets.forEach(function(w){
+    var u = w.urteil || {};
+    if(u.stufe === "gut" && w.bilanz){
+      var vorher = ROSTER.wallets[w.wallet];
+      rosterAufnehmen({
+        wallet: w.wallet,
+        kind: (w.bot && w.bot.art) || null,
+        medianSol: (w.bot && w.bot.medianSol) || null,
+        tier: "kaeufer",
+        bestRank: null
+      }, w.bilanz);
+      var e = ROSTER.wallets[w.wallet];
+      if(e){
+        e.quelle = "kaeufer";
+        e.zuletztGesehen = Date.now();
+        e.coins = (e.coins || []);
+        if(e.coins.indexOf(mint) < 0){
+          e.coins.push(mint);
+          if(e.coins.length > 10) e.coins = e.coins.slice(-10);
+        }
+      }
+      if(!vorher) neu++;
+      gute.push(w.wallet);
+    } else if(u.wort === "Bot" || u.wort === "Dumper" || u.wort === "Cluster" || u.wort === "Verlierer"){
+      sperreSetzen(w.wallet, u.wort, u.text, mint);
+      gesperrt++;
+    }
+  });
+
+  if(gute.length && coin && coin.priceUsd > 0) vorlaufMerken(mint, coin.priceUsd, gute);
+  if(neu || gute.length) rosterSave();
+  return { neu: neu, gesperrt: gesperrt, gute: gute.length };
+}
+
+/**
+ * Der Zusammenlauf - das frueheste Signal, das dieses Werkzeug erzeugen kann.
+ *
+ * Eine gute Wallet in einem Coin ist eine Meinung. Zwei unabhaengige
+ * gute Wallets im selben Coin, ohne dass sie zusammengehoeren, sind
+ * etwas ganz anderes: zwei Leute, die getrennt voneinander zum selben
+ * Schluss gekommen sind. Das passiert selten, und wenn es passiert,
+ * ist es das Beste, was hier auflaufen kann.
+ */
+function zusammenlaufPruefen(mint, bild, coin){
+  if(!bild || !bild.wallets) return null;
+  var bekannte = bild.wallets.filter(function(w){
+    var r = ROSTER.wallets[w.wallet];
+    return r && r.status === "aktiv";
+  });
+  if(bekannte.length < 2) return null;
+  return {
+    anzahl: bekannte.length,
+    wallets: bekannte.map(function(w){ return w.wallet; }),
+    text: bekannte.length + " Wallets aus deinem Bestand sind gleichzeitig hier drin — "+
+      "und sie gehören nicht zusammen. Das ist das stärkste Signal, das dieses Werkzeug kennt."
+  };
 }
 
 var LEARN = { alerts: [], kontrolle: [], schwelle: 45, stand: "" };
@@ -3731,6 +4049,12 @@ el("s-hand").addEventListener("click", function(){
 renderAutoInfo();
 setInterval(learnFollowUp, 3*60*1000);
 setTimeout(learnFollowUp, 8000);
+
+// Der Vorlauf laeuft im selben Takt. Er kostet nichts - /api/quote ist
+// Jupiter, kein Helius - und ohne ihn bleibt "gute Wallet" eine
+// Behauptung statt einer gemessenen Zahl.
+setInterval(vorlaufPruefen, 4*60*1000);
+setTimeout(vorlaufPruefen, 15000);
 
 // Die Messung laeuft unabhaengig von allem anderen mit: aufnehmen im
 // Stundentakt, nachschauen alle vier Minuten. Sie braucht keinen
