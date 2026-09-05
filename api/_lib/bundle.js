@@ -242,23 +242,30 @@ function urteilen(d) {
   const gruende = [];
   let stufe = "sauber";
 
-  const hoch = (s) => {
+  // Der Satz, der das Urteil TRAEGT - nicht einfach der erste in der
+  // Liste. Live stand deshalb eine gelbe Ampel neben dem Satz "Kein Kauf
+  // im Erstell-Block, der Start war offen": das Urteil kam von den 51
+  // Snipern, angezeigt wurde die beruhigende Zeile, die zufaellig zuerst
+  // gesammelt worden war. Farbe und Text sagten Verschiedenes, und das
+  // ist bei einem Werkzeug, dem man Geld anvertraut, der schlimmste
+  // Fehler von allen.
+  let kern = null;
+
+  const hoch = (s, grund) => {
     const rang = { sauber: 0, auffaellig: 1, gebuendelt: 2 };
-    if (rang[s] > rang[stufe]) stufe = s;
+    if (rang[s] > rang[stufe]) { stufe = s; kern = grund; }
   };
 
   if (d.bundleAnteil != null && d.bundleAnteil >= ANTEIL_ALARM) {
-    hoch("gebuendelt");
-    gruende.push(
-      d.bundleWallets + " Wallets haben im Erstell-Block " + d.bundleAnteil.toFixed(1) +
-      "% des Vorrats genommen. Das ist kein Handel, das ist eine Aufstellung.",
-    );
+    const g = d.bundleWallets + " Wallets haben im Erstell-Block " + d.bundleAnteil.toFixed(1) +
+      "% des Vorrats genommen. Das ist kein Handel, das ist eine Aufstellung.";
+    hoch("gebuendelt", g);
+    gruende.push(g);
   } else if (d.bundleAnteil != null && d.bundleAnteil >= ANTEIL_WARNUNG) {
-    hoch("auffaellig");
-    gruende.push(
-      d.bundleWallets + " Wallets im Erstell-Block mit " + d.bundleAnteil.toFixed(1) +
-      "% des Vorrats. Auffaellig viel für Block eins.",
-    );
+    const g = d.bundleWallets + " Wallets im Erstell-Block mit " + d.bundleAnteil.toFixed(1) +
+      "% des Vorrats. Auffaellig viel für Block eins.";
+    hoch("auffaellig", g);
+    gruende.push(g);
   } else if (d.bundleWallets >= MIN_BUNDLE_WALLETS && d.bundleAnteil != null) {
     gruende.push(
       d.bundleWallets + " Wallets im Erstell-Block, zusammen aber nur " +
@@ -270,49 +277,51 @@ function urteilen(d) {
 
   if (d.zahlerCluster.length) {
     const c = d.zahlerCluster[0];
-    hoch(c.anzahl >= 4 ? "gebuendelt" : "auffaellig");
-    gruende.push(
-      "Eine Adresse hat die Gebuehr fuer " + c.anzahl +
-      " verschiedene Wallets bezahlt. Diese Wallets gehoeren zusammen.",
-    );
+    const g = "Eine Adresse hat die Gebuehr fuer " + c.anzahl +
+      " verschiedene Wallets bezahlt. Diese Wallets gehoeren zusammen.";
+    hoch(c.anzahl >= 4 ? "gebuendelt" : "auffaellig", g);
+    gruende.push(g);
   }
 
   if (d.betragCluster.length) {
     const c = d.betragCluster[0];
-    hoch("auffaellig");
-    gruende.push(
-      c.anzahl + " Wallets haben fuer exakt denselben Betrag gekauft (" +
-      c.sol + " SOL). Das tippt kein Mensch.",
-    );
+    const g = c.anzahl + " Wallets haben fuer exakt denselben Betrag gekauft (" +
+      c.sol + " SOL). Das tippt kein Mensch.";
+    hoch("auffaellig", g);
+    gruende.push(g);
   }
 
   if (d.devAnteil != null && d.devAnteil >= 5) {
-    hoch(d.devAnteil >= 15 ? "gebuendelt" : "auffaellig");
-    gruende.push(
-      "Der Ersteller haelt selbst " + d.devAnteil.toFixed(1) +
-      "% - er kann den Kurs allein umlegen.",
-    );
+    const g = "Der Ersteller haelt selbst " + d.devAnteil.toFixed(1) +
+      "% - er kann den Kurs allein umlegen.";
+    hoch(d.devAnteil >= 15 ? "gebuendelt" : "auffaellig", g);
+    gruende.push(g);
   }
 
   if (d.bundleNochDrinAnteil != null && d.bundleNochDrinAnteil >= 8) {
-    hoch(d.bundleNochDrinAnteil >= 20 ? "gebuendelt" : "auffaellig");
-    gruende.push(
-      "Von den Bundle-Wallets stehen heute noch " + d.bundleNochDrinAnteil.toFixed(1) +
-      "% des Streubesitzes in den groessten Haltern. Die haengen dir ueber dem Kopf.",
-    );
+    const g = "Von den Bundle-Wallets stehen heute noch " + d.bundleNochDrinAnteil.toFixed(1) +
+      "% des Streubesitzes in den groessten Haltern. Die haengen dir ueber dem Kopf.";
+    hoch(d.bundleNochDrinAnteil >= 20 ? "gebuendelt" : "auffaellig", g);
+    gruende.push(g);
   } else if (d.bundleWallets > 0 && d.bundleNochDrin === 0 && d.holderGeprueft) {
     gruende.push("Die Bundle-Wallets stehen nicht mehr in den groessten Haltern - sie sind raus.");
   }
 
-  if (d.sniperWallets >= 8 && stufe === "sauber") {
-    stufe = "auffaellig";
-    gruende.push(
-      d.sniperWallets + " Wallets waren in den ersten " + SNIPER_SEKUNDEN +
-      " Sekunden drin. Viele Bots, wenig Mensch.",
-    );
+  if (d.sniperWallets >= 8) {
+    const g = d.sniperWallets + " Wallets waren in den ersten " + SNIPER_SEKUNDEN +
+      " Sekunden drin. Viele Bots, wenig Mensch.";
+    hoch("auffaellig", g);
+    gruende.push(g);
   }
 
-  return { stufe: stufe, gruende: gruende };
+  // Der tragende Satz zuerst - die Oberflaeche zeigt genau einen, und
+  // der muss zur Farbe passen.
+  const kernSatz = kern || gruende[0] || null;
+  if (kernSatz) {
+    const rest = gruende.filter((g) => g !== kernSatz);
+    return { stufe: stufe, kern: kernSatz, gruende: [kernSatz].concat(rest) };
+  }
+  return { stufe: stufe, kern: null, gruende: gruende };
 }
 
 /**
@@ -453,6 +462,7 @@ async function bundleAnalyse(mint) {
       top10Pct: holder ? Math.round(holder.top10Pct * 10) / 10 : null,
 
       stufe: urteil.stufe,
+      kern: urteil.kern,
       gruende: urteil.gruende,
     };
   });

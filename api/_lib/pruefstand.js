@@ -142,6 +142,19 @@ function checkEcht(c) {
   if (s == null) {
     return zeile("echt", "Echtes Volumen", "unbekannt", "Kein Umsatz in der letzten Stunde messbar.", -5, false);
   }
+  // Derselbe Nullwert-Fehler wie bei der Verteilung, nur an anderer
+  // Stelle: ein zwei Minuten alter Coin hat keine Stunde, ueber die
+  // sich "organischer Anteil der letzten Stunde" berechnen liesse.
+  // Live stand deshalb "Nur 0% echt - dieser Coin sucht einen
+  // Abnehmer" unter einem Coin, der schlicht noch zu jung fuer diese
+  // Kennzahl war. Null heisst hier nicht null, sondern noch nicht.
+  if (s <= 0.02 && c.ageMinutes != null && c.ageMinutes < 60) {
+    return zeile(
+      "echt", "Echtes Volumen", "unbekannt",
+      "Zu jung fuer diese Zahl - der organische Anteil misst eine ganze Stunde, und die ist noch nicht um.",
+      -3, false,
+    );
+  }
   const p = Math.round(s * 100);
   if (s >= 0.6) {
     return zeile("echt", "Echtes Volumen", "gut", p + "% des Umsatzes ist echt, nicht Bot-Karussell.", 15, false);
@@ -480,12 +493,12 @@ function gesamtUrteil(frei, bundle, story) {
   if (story && typeof story.punkte === "number") {
     if (story.stufe === "stark") {
       punkte += 12;
-      zusatz.push(zeile("story", "Story", "gut", story.gruende[0] || "Erzaehlung traegt.", 12, false));
+      zusatz.push(zeile("story", "Story", "gut", story.kern || story.gruende[0] || "Erzaehlung traegt.", 12, false));
     } else if (story.stufe === "duenn") {
-      zusatz.push(zeile("story", "Story", "mittel", story.gruende[0] || "Erzaehlung duenn.", 0, false));
+      zusatz.push(zeile("story", "Story", "mittel", story.kern || story.gruende[0] || "Erzaehlung duenn.", 0, false));
     } else {
       punkte -= 12;
-      zusatz.push(zeile("story", "Story", "schlecht", story.gruende[0] || "Keine Erzaehlung.", -12, false));
+      zusatz.push(zeile("story", "Story", "schlecht", story.kern || story.gruende[0] || "Keine Erzaehlung.", -12, false));
     }
   }
 

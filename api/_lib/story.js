@@ -195,6 +195,17 @@ function storyUrteil(coin, extra, tagesBegriffe, handleHistorie) {
   const gruende = [];
   const e = extra || {};
 
+  // Wie beim Bundle: die Oberflaeche zeigt EINEN Satz, und der muss der
+  // sein, der das Urteil traegt. Live stand sonst eine gruene Ampel
+  // neben "Beschreibung nicht abrufbar" - gruen war sie wegen des
+  // verlinkten Beitrags, aber der Satz dazu war ein anderer.
+  let kern = null;
+  let kernGewicht = 0;
+  const merke = (satz, gewicht) => {
+    gruende.push(satz);
+    if (Math.abs(gewicht) > kernGewicht) { kernGewicht = Math.abs(gewicht); kern = satz; }
+  };
+
   const beschr = beschreibungPruefen(e.beschreibung);
   const tw = twitterArt((coin && coin.twitter) || e.twitter);
   const sektor = narrative.sectorOf ? narrative.sectorOf(coin) : null;
@@ -203,32 +214,31 @@ function storyUrteil(coin, extra, tagesBegriffe, handleHistorie) {
   let punkte = 50;
 
   if (e.unbekannt) {
-    gruende.push("Beschreibung nicht abrufbar - dazu kann ich nichts sagen.");
+    merke("Beschreibung nicht abrufbar - dazu kann ich nichts sagen.", 0);
   } else if (!beschr.hat) {
     punkte -= 15;
-    gruende.push("Keine Beschreibung. Wer nichts erzaehlt, hat nichts zu erzaehlen.");
+    merke("Keine Beschreibung. Wer nichts erzaehlt, hat nichts zu erzaehlen.", 15);
   } else {
-    gruende.push(beschr.text);
-    if (beschr.eigen >= 8) punkte += 15;
-    else if (beschr.eigen >= 4) punkte += 6;
-    else punkte -= 10;
+    const g = beschr.eigen >= 8 ? 15 : beschr.eigen >= 4 ? 6 : -10;
+    punkte += g;
+    merke(beschr.text, g);
   }
 
   if (tw.art === "beitrag") {
     punkte += 20;
-    gruende.push(tw.text);
+    merke(tw.text, 20);
   } else if (tw.art === "profil") {
     punkte += 6;
-    gruende.push(tw.text + " Kein einzelner Beitrag verlinkt.");
+    merke(tw.text + " Kein einzelner Beitrag verlinkt.", 6);
   } else if (tw.art === "suche") {
     punkte -= 20;
-    gruende.push(tw.text);
+    merke(tw.text, 20);
   } else if (tw.art === "keiner") {
     punkte -= 10;
-    gruende.push(tw.text);
+    merke(tw.text, 10);
   } else {
     punkte -= 15;
-    gruende.push(tw.text);
+    merke(tw.text, 15);
   }
 
   // Wiederverwendeter Griff: das Gedaechtnis fuehrt die Oberflaeche,
@@ -240,19 +250,22 @@ function storyUrteil(coin, extra, tagesBegriffe, handleHistorie) {
     const andere = frueher.coins.filter((c) => c !== (coin && coin.address));
     if (andere.length) {
       wiederverwendet = andere.length;
-      punkte -= Math.min(25, 10 + andere.length * 5);
-      gruende.push(
+      const ab = Math.min(25, 10 + andere.length * 5);
+      punkte -= ab;
+      merke(
         "Dasselbe X-Konto @" + handle + " hing schon an " + andere.length +
         " anderen Coins. Das ist ein Wiederholungstaeter.",
+        ab,
       );
     }
   }
 
   if (themen.length) {
     punkte += 20;
-    gruende.push(
+    merke(
       "Trifft ein Thema, das heute draussen wirklich laeuft: " +
       themen.map((t) => t.wort).join(", ") + ".",
+      21,
     );
   }
 
@@ -263,10 +276,14 @@ function storyUrteil(coin, extra, tagesBegriffe, handleHistorie) {
   punkte = Math.max(0, Math.min(100, punkte));
   const stufe = punkte >= 65 ? "stark" : punkte >= 40 ? "duenn" : "leer";
 
+  const kernSatz = kern || gruende[0] || null;
+  const rest = kernSatz ? gruende.filter((g) => g !== kernSatz) : gruende;
+
   return {
     punkte: punkte,
     stufe: stufe,
-    gruende: gruende,
+    kern: kernSatz,
+    gruende: kernSatz ? [kernSatz].concat(rest) : gruende,
     beschreibung: e.beschreibung || null,
     beschreibungPruefung: beschr,
     twitter: tw,
