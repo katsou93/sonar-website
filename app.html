@@ -989,8 +989,8 @@ function pfKarte(c){
     '<div class="pfbtns">'+
       '<button class="btn btn-sm btn-g" data-pf-auf="'+esc(c.address)+'">'+(offen?"Checkliste zu":"Checkliste ("+checks.length+" Punkte)")+'</button>'+
       (tief ? '' : '<button class="btn btn-sm btn-p" data-pf-tief="'+esc(c.address)+'">Launch prüfen</button>')+
-      '<a class="btn btn-sm" href="'+esc(safeUrl(c.pumpUrl)||safeUrl(c.dexUrl))+'" target="_blank" rel="noopener">Chart öffnen</a>'+
-      '<button class="btn btn-sm" data-pf-scan="'+esc(c.address)+'">Im Scanner</button>'+
+      '<a class="btn btn-sm btn-g" href="'+esc(safeUrl(c.pumpUrl)||safeUrl(c.dexUrl))+'" target="_blank" rel="noopener">Chart öffnen</a>'+
+      '<button class="btn btn-sm btn-g" data-pf-scan="'+esc(c.address)+'">Im Scanner</button>'+
     '</div>'+
   '</div>';
 }
