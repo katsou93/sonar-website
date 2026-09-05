@@ -1,6 +1,23 @@
 "use strict";
 /**
- * GET /api/tief?mint=<adresse>&begriffe=wort,wort,...
+ * GET /api/tief?mint=<adresse>&begriffe=wort,wort,...   (Tiefpruefung)
+ * GET /api/tief?was=kaeufer&mint=<adresse>              (Wer kauft hier)
+ * GET /api/tief?was=crowd&mint=<adresse>&minutes=30     (Zulauf)
+ *
+ * Warum drei Antworten aus einer Datei, obwohl das drei Fragen sind:
+ *
+ * Vercel erlaubt im kostenlosen Tarif zwoelf Serverless-Funktionen pro
+ * Deployment. Jede Datei unter api/ ist eine. Mit einer eigenen Route
+ * fuer die Kaeuferpruefung waren es dreizehn - und dann schlaegt nicht
+ * etwa diese eine Route fehl, sondern das GESAMTE Deployment. Live
+ * gemessen und teuer bezahlt: fuenf Commits lang lief die Seite
+ * unveraendert weiter, waehrend hier alles gruen aussah, weil GitHub
+ * den Commit annimmt und Vercel ihn danach still verwirft.
+ *
+ * Die drei Fragen gehoeren ohnehin zusammen - alle drei lauten "sag mir
+ * mehr ueber DIESEN einen Coin" - also sind sie jetzt ein Endpunkt mit
+ * einem Schalter. Das kostet ein Fragezeichen mehr in der URL und
+ * schafft Platz fuer zwei weitere Routen.
  *
  * Die Tiefpruefung eines einzelnen Coins - das, wofuer du auf Axiom
  * bisher selbst auf die Blasenkarte und den Twitter-Link geklickt hast.
@@ -26,7 +43,8 @@
 const jup = require("./_lib/jupiter");
 const { bundleAnalyse } = require("./_lib/bundle");
 const { storyCheck } = require("./_lib/story");
-const { frischeKaeufe } = require("./_lib/kaeufer");
+const { frischeKaeufe, kaeuferBild } = require("./_lib/kaeufer");
+const { recentBuyersOf } = require("./_lib/wallets");
 const { washFrei, rundlaeufer, washUrteil } = require("./_lib/wash");
 const { freiesUrteil, gesamtUrteil } = require("./_lib/pruefstand");
 const { send, fail, authorized, preflight } = require("./_lib/respond");
@@ -51,6 +69,31 @@ module.exports = async function handler(req, res) {
     return fail(res, 400, "Parameter 'mint' fehlt oder ist keine gültige Adresse.", "BAD_INPUT");
   }
   const begriffe = begriffeAus(q.begriffe);
+  const was = String(q.was || "").trim();
+
+  // Wer kauft hier - die teure Frage, deshalb nur auf Zuruf.
+  if (was === "kaeufer") {
+    const minuten = Math.min(360, Math.max(10, Number(q.minuten) || 60));
+    const wieViele = Math.min(4, Math.max(1, Number(q.wieViele) || 4));
+    try {
+      const bild = await kaeuferBild(mint, minuten, wieViele);
+      return send(res, 200, Object.assign({ ok: true, mint: mint }, bild), 300);
+    } catch (err) {
+      return fail(res, 502, (err && err.message) || "Abfrage fehlgeschlagen.", "KAEUFER_FAILED");
+    }
+  }
+
+  // Der Zulauf: wie viele gehen gerade rein, und sind es ernsthafte
+  // Betraege oder Centbetrag-Bots?
+  if (was === "crowd") {
+    const minutes = Math.min(180, Math.max(5, Number(q.minutes) || 30));
+    try {
+      const crowd = await recentBuyersOf(mint, minutes);
+      return send(res, 200, Object.assign({ ok: true, mint: mint, minutes: minutes }, crowd), 300);
+    } catch (err) {
+      return fail(res, 502, (err && err.message) || "Abfrage fehlgeschlagen.", "CROWD_FAILED");
+    }
+  }
 
   // Der Coin selbst - fuer die freie Ebene, damit die Tiefpruefung ein
   // vollstaendiges Urteil zurueckgeben kann und nicht nur ein Fragment.
