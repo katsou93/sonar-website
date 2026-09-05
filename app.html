@@ -106,6 +106,41 @@ main{padding:26px 0 80px}
 .ftext span{font-size:12.5px;color:var(--mu);line-height:1.55}
 .fpen{margin-left:auto;font-family:var(--mono);font-size:11.5px;color:var(--mu2);flex:0 0 auto;padding-top:2px}
 
+/* ---------- Pruefstand ---------- */
+.pfcard{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px}
+.pfcard.a-gruen{border-color:rgba(20,241,149,.3)}
+.pfcard.a-gelb{border-color:rgba(255,197,49,.28)}
+.pfcard.a-rot{border-color:rgba(255,77,106,.28);opacity:.82}
+.pfhead{display:flex;align-items:center;gap:13px;flex-wrap:wrap}
+.pfav{width:38px;height:38px;border-radius:9px;flex:0 0 38px;background:var(--panel2);object-fit:cover}
+.pfname{font-weight:650;font-size:15px;letter-spacing:-.01em}
+.pfsym{font-family:var(--mono);font-size:12px;color:var(--mu)}
+.pfamp{margin-left:auto;display:flex;align-items:center;gap:9px;flex:0 0 auto}
+.pfpunkte{font-family:var(--mono);font-size:19px;font-weight:600}
+.a-gruen .pfpunkte{color:var(--grn)}.a-gelb .pfpunkte{color:var(--yel)}.a-rot .pfpunkte{color:var(--red)}
+.pfdot{width:11px;height:11px;border-radius:50%}
+.a-gruen .pfdot{background:var(--grn)}.a-gelb .pfdot{background:var(--yel)}.a-rot .pfdot{background:var(--red)}
+.pfzahlen{display:flex;gap:16px;flex-wrap:wrap;margin:11px 0 2px;font-family:var(--mono);font-size:12px;color:var(--mu)}
+.pfzahlen b{color:var(--tx);font-weight:600}
+.pfliste{margin-top:12px;border-top:1px solid rgba(255,255,255,.05)}
+.pfz{display:flex;gap:11px;padding:9px 0;border-top:1px solid rgba(255,255,255,.04);align-items:flex-start}
+.pfz:first-child{border-top:0}
+.pfzd{width:7px;height:7px;border-radius:50%;flex:0 0 7px;margin-top:6px}
+.z-gut{background:var(--grn)}.z-mittel{background:var(--yel)}.z-schlecht{background:var(--red)}.z-unbekannt{background:var(--mu2)}
+.pfzl{flex:0 0 152px;font-size:12px;color:var(--mu2);text-transform:uppercase;letter-spacing:.06em;padding-top:1px}
+.pfzt{font-size:13px;line-height:1.55;flex:1;min-width:180px}
+.pfart{font-family:var(--mono);font-size:10px;letter-spacing:.06em;padding:1px 6px;border-radius:5px;flex:0 0 auto;margin-top:2px}
+.art-beweis{background:rgba(20,241,149,.1);color:var(--grn)}
+.art-hinweis{background:rgba(255,255,255,.05);color:var(--mu2)}
+.pfbtns{display:flex;gap:8px;flex-wrap:wrap;margin-top:13px}
+.pftief{margin-top:12px;padding:13px 15px;border-radius:11px;background:var(--panel2);border:1px solid var(--border)}
+.pftief h4{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--mu2);margin-bottom:9px;font-weight:600}
+.pfmess{display:flex;gap:18px;flex-wrap:wrap;font-family:var(--mono);font-size:12px;margin-bottom:10px}
+.pfmess span{color:var(--mu)}.pfmess b{color:var(--tx)}
+.pfwarn{color:var(--red)}
+.pfsum{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.pfsumbox{padding:9px 15px;border-radius:10px;border:1px solid var(--border);background:var(--panel);font-size:13px}
+.pfsumbox b{font-family:var(--mono);font-size:16px;margin-right:7px}
 .fit{display:flex;flex-direction:column;gap:10px}
 .fitrow{padding:13px;border-radius:10px;border:1px solid var(--border)}
 .fitrow.yes{border-color:rgba(20,241,149,.3);background:rgba(20,241,149,.05)}
@@ -447,7 +482,8 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
       SONAR
     </a>
     <div class="tabs">
-      <button class="tab on" data-view="jetzt">Jetzt</button>
+      <button class="tab on" data-view="pruef">Prüfstand</button>
+      <button class="tab" data-view="jetzt">Jetzt</button>
       <button class="tab" data-view="scanner">Scanner</button>
       <button class="tab" data-view="radar">Radar</button>
       <button class="tab" data-view="wache">Wache</button>
@@ -464,8 +500,39 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
 
 <main class="wrap">
 
+  <!-- ============ PRUEFSTAND ============ -->
+  <section class="view on" id="view-pruef">
+    <div class="filters">
+      <button class="preset on" data-pf="alle">Alle</button>
+      <button class="preset" data-pf="gruen">Nur grün</button>
+      <button class="preset" data-pf="kurve">Nur auf der Kurve</button>
+      <div class="hspace" style="flex:1"></div>
+      <label class="autolabel"><input type="checkbox" id="pf-auto"> alle 60 s</label>
+      <button class="btn btn-g btn-sm" id="pf-reload">Aktualisieren</button>
+    </div>
+    <div class="sliders">
+      <div class="sld">
+        <label>Höchstalter <b id="pf-age-val">24 Stunden</b></label>
+        <input type="range" id="pf-age" min="0" max="6" step="1" value="4">
+      </div>
+      <div class="sld">
+        <label>Mindestpunkte <b id="pf-min-val">40</b></label>
+        <input type="range" id="pf-min" min="0" max="80" step="10" value="40">
+      </div>
+    </div>
+    <div id="pf-stats"></div>
+    <div id="pf-out"></div>
+    <p class="hint" style="margin-top:18px">
+      Jeder Coin läuft durch dieselbe Checkliste — die, die du auf Axiom von Hand abarbeitest.
+      <b style="color:var(--mu)">Beweis</b> heißt: das steht so auf der Kette und kann nicht anders sein.
+      <b style="color:var(--mu)">Hinweis</b> heißt: das kann auch täuschen.
+      Die Launch-Prüfung (Bundle, verbundene Wallets, Anteil des Erstellers) kostet Guthaben und läuft
+      deshalb erst auf Knopfdruck — bei den drei besten automatisch.
+    </p>
+  </section>
+
   <!-- ============ JETZT ============ -->
-  <section class="view on" id="view-jetzt">
+  <section class="view" id="view-jetzt">
     <div class="filters">
       <button class="preset" data-og="gross">Große Namen</button>
       <button class="preset on" data-og="etabliert">Etabliert</button>
@@ -663,7 +730,9 @@ function lockOut(){
 function unlock(){
   document.getElementById("gate").classList.add("hide");
   document.getElementById("app").classList.add("show");
-  if(!jetztLoaded){ jetztLoaded = true; loadJetzt(); }
+  // Der Pruefstand ist der Startbildschirm - er beantwortet die Frage,
+  // mit der man die App ueberhaupt aufmacht: was ist heute kaufbar?
+  if(!PF.geladen){ PF.geladen = true; ladePruefstand(); }
   var params = new URLSearchParams(location.search);
   if(params.get("address")) scan(params.get("address"));
   var h = location.hash.replace("#","");
@@ -727,6 +796,7 @@ for(var i=0;i<tabs.length;i++){
     var v = this.getAttribute("data-view");
     document.querySelectorAll(".tab").forEach(function(t){ t.classList.toggle("on", t===this); }, this);
     document.querySelectorAll(".view").forEach(function(s){ s.classList.toggle("on", s.id==="view-"+v); });
+    if(v==="pruef" && !PF.geladen){ PF.geladen = true; ladePruefstand(); }
     if(v==="jetzt" && !jetztLoaded){ jetztLoaded = true; loadJetzt(); }
     if(v==="radar" && !radarLoaded) loadRadar();
     if(v==="wache" && !wacheLoaded){ wacheLoaded = true; loadWache(); }
@@ -737,6 +807,341 @@ for(var i=0;i<tabs.length;i++){
     location.hash = v;
   });
 }
+
+/* =====================================================================
+   PRUEFSTAND
+
+   Der Ablauf, den du auf Axiom von Hand machst, als feste Reihenfolge.
+
+   Der wichtigste Gedanke dahinter steht nicht im Code, sondern in der
+   Reihenfolge: erst wird gefiltert, was NICHTS kostet, und erst danach
+   wird Guthaben ausgegeben. Die freie Ebene wirft von zweihundert
+   Kandidaten neunzig Prozent weg, ohne dass eine einzige Helius-Abfrage
+   laeuft. Die teure Launch-Forensik sieht nur noch die Handvoll, die
+   uebrig bleibt - und ihr Ergebnis liegt danach zwoelf Stunden im
+   Cache, weil sich die Vergangenheit eines Coins nicht mehr aendert.
+   ===================================================================== */
+
+var PF = { coins: [], filter: "alle", tief: {}, offen: {}, timer: null, geladen: false, laeuft: false };
+var PF_ALTER = [60, 180, 360, 720, 1440, 2880, 4320];
+var PF_ALTER_TXT = ["1 Stunde", "3 Stunden", "6 Stunden", "12 Stunden", "24 Stunden", "2 Tage", "3 Tage"];
+
+/* ---- Das Gedaechtnis fuer X-Konten ----------------------------------
+
+   Ein wiederverwendetes X-Konto ist eine der haeufigsten Maschen: derselbe
+   Griff haengt an Coin nach Coin, jedes Mal mit neuem Namen. Von aussen
+   ist das nur zu sehen, wenn jemand mitschreibt - also schreibt die App
+   mit. Kostet nichts, liegt lokal, und wird mit jedem Aufruf besser. */
+
+function pfHandles(){
+  try { return JSON.parse(localStorage.getItem("sonar_handles") || "{}"); } catch(e){ return {}; }
+}
+function pfHandleVon(url){
+  var m = String(url||"").match(/^(?:https?:\/\/)?(?:www\.|mobile\.)?(?:twitter|x)\.com\/([A-Za-z0-9_]{1,20})(?:[\/?#]|$)/i);
+  if(!m) return null;
+  var h = m[1].toLowerCase();
+  if(h==="search" || h==="hashtag" || h==="explore" || h==="i" || h==="home") return null;
+  return h;
+}
+function pfHandlesMerken(coins){
+  var db = pfHandles(), neu = false;
+  for(var i=0;i<coins.length;i++){
+    var h = pfHandleVon(coins[i].twitter);
+    if(!h) continue;
+    if(!db[h]) db[h] = { coins: [] };
+    if(db[h].coins.indexOf(coins[i].address) < 0){
+      db[h].coins.push(coins[i].address);
+      if(db[h].coins.length > 20) db[h].coins = db[h].coins.slice(-20);
+      neu = true;
+    }
+  }
+  // Nicht unbegrenzt wachsen lassen - der Speicher des Browsers ist klein.
+  var keys = Object.keys(db);
+  if(keys.length > 400){
+    var weg = keys.slice(0, keys.length - 400);
+    for(var k=0;k<weg.length;k++) delete db[weg[k]];
+    neu = true;
+  }
+  if(neu){ try { localStorage.setItem("sonar_handles", JSON.stringify(db)); } catch(e){} }
+  return db;
+}
+
+/** Die Tagesbegriffe der Heute-Seite - fuer den Abgleich mit dem Coin-Namen. */
+function pfBegriffe(){
+  try {
+    var d = JSON.parse(localStorage.getItem("sonar_heute_begriffe") || "null");
+    if(d && d.woerter && (Date.now() - d.stand) < 6*3600*1000) return d.woerter;
+  } catch(e){}
+  return [];
+}
+
+/* ---- Laden ---------------------------------------------------------- */
+
+function ladePruefstand(){
+  var box = el("pf-out");
+  if(!box || PF.laeuft) return;
+  PF.laeuft = true;
+
+  var alter = PF_ALTER[Number((el("pf-age")||{}).value || 4)] || 1440;
+  var minP  = Number((el("pf-min")||{}).value || 40);
+  var kurve = PF.filter === "kurve" ? "&nurKurve=1" : "";
+
+  if(!PF.coins.length) box.innerHTML = '<div class="empty">Kandidaten werden geprüft …</div>';
+
+  apiFetch("/api/frisch?maxAlter="+alter+"&limit=30&minPunkte="+minP+kurve)
+    .then(function(j){
+      PF.laeuft = false;
+      if(!j || !j.ok){ box.innerHTML = '<div class="err">'+esc((j&&j.error)||"Konnte nicht geladen werden.")+'</div>'; return; }
+      PF.coins = j.coins || [];
+      pfHandlesMerken(PF.coins);
+      renderPruefstand(j);
+      pfAutoTief();
+    })
+    .catch(function(e){
+      PF.laeuft = false;
+      if(e && e.locked) return;
+      box.innerHTML = '<div class="err">Server nicht erreichbar.</div>';
+    });
+}
+
+/**
+ * Die drei besten automatisch tief pruefen.
+ *
+ * Bewusst genau drei, und bewusst nur die, die es durch die freie Ebene
+ * geschafft haben: jede Tiefpruefung kostet rund 115 Guthaben. Drei pro
+ * Aktualisierung bei einer Minute Takt waeren im Monat mehr, als das
+ * Freikontingent hergibt - deshalb wird jeder Coin nur EINMAL geprueft
+ * (PF.tief merkt sich das) und das Ergebnis serverseitig zwoelf Stunden
+ * gehalten.
+ */
+function pfAutoTief(){
+  var kandidaten = PF.coins.filter(function(c){
+    return c.ampel !== "rot" && c.tiefLohntSich && !PF.tief[c.address];
+  }).slice(0, 3);
+  kandidaten.forEach(function(c, i){
+    setTimeout(function(){ tiefPruefen(c.address, true); }, i * 700);
+  });
+}
+
+/* ---- Anzeige -------------------------------------------------------- */
+
+function pfZeile(z){
+  var art = z.beweis
+    ? '<span class="pfart art-beweis">BEWEIS</span>'
+    : '<span class="pfart art-hinweis">HINWEIS</span>';
+  return '<div class="pfz">'+
+    '<span class="pfzd z-'+esc(z.stufe)+'"></span>'+
+    '<span class="pfzl">'+esc(z.label)+'</span>'+
+    '<span class="pfzt">'+esc(z.text)+'</span>'+
+    art+
+  '</div>';
+}
+
+function pfKarte(c){
+  var offen = PF.offen[c.address];
+  var tief  = PF.tief[c.address];
+  var checks = (tief && tief.urteil && tief.urteil.checks) || c.checks || [];
+  var punkte = tief && tief.urteil ? tief.urteil.punkte : c.punkte;
+  var ampel  = tief && tief.urteil ? tief.urteil.ampel  : c.ampel;
+
+  // Das wiederverwendete X-Konto kann nur der Browser wissen - er fuehrt
+  // die Historie. Deshalb wird diese Zeile hier angehaengt und nicht
+  // serverseitig erzeugt.
+  var extra = "";
+  var h = pfHandleVon(c.twitter);
+  if(h){
+    var db = pfHandles();
+    var andere = db[h] ? db[h].coins.filter(function(a){ return a !== c.address; }) : [];
+    if(andere.length){
+      extra = pfZeile({
+        label: "X-Konto", stufe: "schlecht", beweis: false,
+        text: "@"+h+" hing hier schon an "+andere.length+" anderen Coins. Wiederholungstäter."
+      });
+    }
+  }
+
+  var alter = c.ageMinutes == null ? "—"
+    : c.ageMinutes < 90 ? c.ageMinutes + " Min"
+    : c.ageMinutes < 1440 ? Math.round(c.ageMinutes/60) + " Std"
+    : Math.round(c.ageMinutes/1440) + " Tage";
+
+  var bild = safeUrl(c.imageUrl)
+    ? '<img class="pfav" src="'+esc(safeUrl(c.imageUrl))+'" alt="" loading="lazy" onerror="this.style.visibility=\'hidden\'">'
+    : '<span class="pfav"></span>';
+
+  return '<div class="pfcard a-'+esc(ampel)+'" id="pf-'+esc(c.address)+'">'+
+    '<div class="pfhead">'+
+      bild+
+      '<span><span class="pfname">'+esc(c.name || "Ohne Namen")+'</span> '+
+        '<span class="pfsym">'+esc(c.symbol || "")+'</span></span>'+
+      '<span class="pfamp"><span class="pfdot"></span><span class="pfpunkte">'+punkte+'</span></span>'+
+    '</div>'+
+    '<div class="pfzahlen">'+
+      '<span>Marktwert <b>'+money(c.marketCap)+'</b></span>'+
+      '<span>Pool <b>'+money(c.liquidityUsd)+'</b></span>'+
+      '<span>Alter <b>'+alter+'</b></span>'+
+      '<span>Halter <b>'+(c.holderCount==null?"—":c.holderCount)+'</b></span>'+
+      '<span>1h <b class="'+((c.priceChangeH1||0)>=0?"up":"dn")+'">'+pctTxt(c.priceChangeH1)+'</b></span>'+
+      (c.bondingCurvePct!=null?'<span>Kurve <b>'+Math.round(c.bondingCurvePct)+'%</b></span>':'')+
+    '</div>'+
+    (offen ? '<div class="pfliste">'+checks.map(pfZeile).join("")+extra+'</div>' : "")+
+    (tief ? pfTiefBlock(tief) : "")+
+    '<div class="pfbtns">'+
+      '<button class="btn btn-sm btn-g" data-pf-auf="'+esc(c.address)+'">'+(offen?"Checkliste zu":"Checkliste ("+checks.length+" Punkte)")+'</button>'+
+      (tief ? '' : '<button class="btn btn-sm btn-p" data-pf-tief="'+esc(c.address)+'">Launch prüfen</button>')+
+      '<a class="btn btn-sm" href="'+esc(safeUrl(c.pumpUrl)||safeUrl(c.dexUrl))+'" target="_blank" rel="noopener">Chart öffnen</a>'+
+      '<button class="btn btn-sm" data-pf-scan="'+esc(c.address)+'">Im Scanner</button>'+
+    '</div>'+
+  '</div>';
+}
+
+/** Der Block, den es nur nach einer Tiefpruefung gibt. */
+function pfTiefBlock(t){
+  var b = t.bundle || {};
+  var s = t.story || null;
+  var out = '<div class="pftief"><h4>Launch-Prüfung</h4>';
+
+  if(!b.verfuegbar){
+    out += '<div class="mu" style="font-size:13px">'+esc(b.grund || "Nicht prüfbar.")+'</div>';
+  } else {
+    out += '<div class="pfmess">'+
+      '<span>Im Erstell-Block: <b'+((b.bundleAnteil||0)>=12?' class="pfwarn"':'')+'>'+
+        b.bundleWallets+' Wallets'+(b.bundleAnteil!=null?' · '+b.bundleAnteil+'%':'')+'</b></span>'+
+      '<span>Ersteller hält: <b'+((b.devAnteil||0)>=5?' class="pfwarn"':'')+'>'+
+        (b.devAnteil==null?"—":b.devAnteil+"%")+'</b></span>'+
+      '<span>Verbundene Wallets: <b'+((b.clusterWallets||0)>0?' class="pfwarn"':'')+'>'+(b.clusterWallets||0)+'</b></span>'+
+      '<span>Davon noch oben: <b'+((b.bundleNochDrinAnteil||0)>=8?' class="pfwarn"':'')+'>'+
+        (b.bundleNochDrinAnteil==null?"—":b.bundleNochDrinAnteil+"%")+'</b></span>'+
+      '<span>Sniper in '+ (b.sniperWallets!=null?'20 s':'') +': <b>'+(b.sniperWallets==null?"—":b.sniperWallets)+'</b></span>'+
+    '</div>';
+    out += (b.gruende||[]).map(function(g){
+      return '<div class="pfz"><span class="pfzd z-'+(b.stufe==="sauber"?"gut":b.stufe==="auffaellig"?"mittel":"schlecht")+
+        '"></span><span class="pfzt">'+esc(g)+'</span></div>';
+    }).join("");
+  }
+
+  if(s){
+    out += '<h4 style="margin-top:14px">Story</h4>';
+    out += (s.gruende||[]).map(function(g){
+      return '<div class="pfz"><span class="pfzd z-'+(s.stufe==="stark"?"gut":s.stufe==="duenn"?"mittel":"schlecht")+
+        '"></span><span class="pfzt">'+esc(g)+'</span></div>';
+    }).join("");
+    if(s.beschreibung){
+      out += '<div style="margin-top:9px;font-size:12.5px;color:var(--mu);line-height:1.6;'+
+        'border-left:2px solid var(--border2);padding-left:11px">'+esc(String(s.beschreibung).slice(0,320))+'</div>';
+    }
+  }
+  return out + '</div>';
+}
+
+function renderPruefstand(j){
+  var box = el("pf-out"), st = el("pf-stats");
+  var liste = PF.coins.filter(function(c){
+    if(PF.filter === "gruen") return c.ampel === "gruen";
+    return true;
+  });
+
+  if(st){
+    var g = PF.coins.filter(function(c){ return c.ampel==="gruen"; }).length;
+    var y = PF.coins.filter(function(c){ return c.ampel==="gelb"; }).length;
+    var r = PF.coins.filter(function(c){ return c.ampel==="rot"; }).length;
+    st.innerHTML = '<div class="pfsum">'+
+      '<div class="pfsumbox"><b class="up">'+g+'</b>kommen sauber durch</div>'+
+      '<div class="pfsumbox"><b style="color:var(--yel)">'+y+'</b>mit Vorbehalt</div>'+
+      '<div class="pfsumbox"><b class="dn">'+r+'</b>durchgefallen</div>'+
+      '<div class="pfsumbox mu" style="font-size:12px">'+
+        (j && j.geprueft ? j.geprueft+' Kandidaten angesehen, '+j.imFenster+' im Zeitfenster' : '')+'</div>'+
+    '</div>';
+  }
+
+  if(!liste.length){
+    box.innerHTML = '<div class="empty">Nichts, was durchkommt. Das ist ein Ergebnis, kein Fehler — '+
+      'stell das Höchstalter höher oder die Mindestpunkte runter.</div>';
+    return;
+  }
+  box.innerHTML = liste.map(pfKarte).join("");
+}
+
+/* ---- Tiefpruefung --------------------------------------------------- */
+
+function tiefPruefen(mint, still){
+  if(PF.tief[mint]) return;
+  var karte = document.getElementById("pf-"+mint);
+  var btn = karte && karte.querySelector('[data-pf-tief]');
+  if(btn){ btn.disabled = true; btn.textContent = "Prüfe Launch …"; }
+
+  var w = pfBegriffe().slice(0, 30).join(",");
+  apiFetch("/api/tief?mint="+encodeURIComponent(mint)+(w?"&begriffe="+encodeURIComponent(w):""))
+    .then(function(j){
+      if(!j || !j.ok){
+        if(btn){ btn.disabled = false; btn.textContent = "Launch prüfen"; }
+        return;
+      }
+      PF.tief[mint] = j;
+      // Nach einer Tiefpruefung ist die Checkliste die eigentliche
+      // Nachricht - also aufklappen, auch wenn sie vorher zu war.
+      PF.offen[mint] = true;
+      pfNeuZeichnen(mint);
+      // Die Reihenfolge kann sich geaendert haben: ein bewiesenes Bundle
+      // wirft einen Coin nach unten. Aber nicht mitten im Lesen neu
+      // sortieren - das macht erst die naechste Aktualisierung.
+    })
+    .catch(function(e){
+      if(e && e.locked) return;
+      if(btn){ btn.disabled = false; btn.textContent = "Launch prüfen"; }
+      if(!still && karte) karte.insertAdjacentHTML("beforeend",
+        '<div class="err" style="margin-top:10px">Launch-Prüfung fehlgeschlagen.</div>');
+    });
+}
+
+/** Nur diese eine Karte neu bauen - die Liste bleibt stehen, wo sie ist. */
+function pfNeuZeichnen(mint){
+  var alt = document.getElementById("pf-"+mint);
+  var c = PF.coins.find(function(x){ return x.address === mint; });
+  if(!alt || !c) return;
+  var huelle = document.createElement("div");
+  huelle.innerHTML = pfKarte(c);
+  alt.replaceWith(huelle.firstChild);
+}
+
+/* ---- Bedienung ------------------------------------------------------ */
+
+document.addEventListener("click", function(ev){
+  var a = ev.target.closest && ev.target.closest("[data-pf-auf]");
+  if(a){ var m = a.getAttribute("data-pf-auf"); PF.offen[m] = !PF.offen[m]; pfNeuZeichnen(m); return; }
+  var t = ev.target.closest && ev.target.closest("[data-pf-tief]");
+  if(t){ tiefPruefen(t.getAttribute("data-pf-tief"), false); return; }
+  var s = ev.target.closest && ev.target.closest("[data-pf-scan]");
+  if(s){
+    var adr = s.getAttribute("data-pf-scan");
+    document.querySelector('.tab[data-view="scanner"]').click();
+    var feld = el("q"); if(feld) feld.value = adr;
+    scan(adr);
+  }
+});
+
+document.querySelectorAll("[data-pf]").forEach(function(b){
+  b.addEventListener("click", function(){
+    document.querySelectorAll("[data-pf]").forEach(function(x){ x.classList.toggle("on", x===b); });
+    PF.filter = b.getAttribute("data-pf");
+    if(PF.filter === "kurve") ladePruefstand(); else renderPruefstand(null);
+  });
+});
+
+(function(){
+  var age = el("pf-age"), min = el("pf-min"), rl = el("pf-reload"), auto = el("pf-auto");
+  if(age) age.addEventListener("input", function(){
+    el("pf-age-val").textContent = PF_ALTER_TXT[Number(this.value)] || "24 Stunden";
+  });
+  if(age) age.addEventListener("change", ladePruefstand);
+  if(min) min.addEventListener("input", function(){ el("pf-min-val").textContent = this.value; });
+  if(min) min.addEventListener("change", ladePruefstand);
+  if(rl) rl.addEventListener("click", ladePruefstand);
+  if(auto) auto.addEventListener("change", function(){
+    if(PF.timer){ clearInterval(PF.timer); PF.timer = null; }
+    if(this.checked) PF.timer = setInterval(ladePruefstand, 60000);
+  });
+})();
 
 /* ---------- Jetzt: die drei Karten ---------- */
 
@@ -1849,6 +2254,19 @@ function ladeHeute(){
       if(stand) stand.textContent = j.quellenOk + " von " + j.quellenGesamt + " Quellen · Stand " + uhr(j.stand);
 
       if(j.fehler){ box.innerHTML = '<div class="err">'+esc(j.fehler)+'</div>'; return; }
+
+      // Die Begriffe des Tages fuer den Pruefstand mitnehmen. Er gleicht
+      // damit Coin-Namen gegen das ab, was draussen wirklich laeuft -
+      // und weil sie hier ohnehin da sind, kostet das keine Abfrage.
+      try {
+        var woerter = [];
+        (j.kategorien || []).forEach(function(k){
+          (k.begriffe || []).forEach(function(b){ if(b && b.wort) woerter.push(b.wort); });
+        });
+        (j.ohneKategorie || []).forEach(function(b){ if(b && b.wort) woerter.push(b.wort); });
+        localStorage.setItem("sonar_heute_begriffe",
+          JSON.stringify({ stand: Date.now(), woerter: woerter.slice(0, 60) }));
+      } catch(e){}
 
       var html = "";
 
