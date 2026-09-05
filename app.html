@@ -162,6 +162,31 @@ main{padding:26px 0 80px}
 .pfzus{margin:2px 0 12px;padding:11px 14px;border-radius:10px;font-size:13.5px;line-height:1.55;
   background:rgba(20,241,149,.09);border:1px solid rgba(20,241,149,.32);color:var(--tx)}
 .pfmerk{margin-top:10px;font-size:12.5px;color:var(--mu);line-height:1.55}
+.m-unbek{background:rgba(255,255,255,.05);color:var(--mu2)}
+
+/* ---------- Tagebuch ---------- */
+.tgok{padding:11px 15px;border-radius:10px;margin-bottom:14px;font-size:13px;
+  background:rgba(20,241,149,.07);border:1px solid rgba(20,241,149,.26);
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.tgfehlt{padding:13px 16px;border-radius:10px;margin-bottom:14px;font-size:13px;line-height:1.6;
+  background:rgba(255,197,49,.06);border:1px solid rgba(255,197,49,.28)}
+.tgfehlt code{font-family:var(--mono);font-size:12px;color:var(--yel)}
+.busec{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--mu2);
+  margin:22px 0 10px;font-weight:600}
+.burow{display:flex;align-items:center;gap:16px;padding:13px 16px;border-radius:11px;
+  border:1px solid var(--border);background:var(--panel);margin-bottom:8px;flex-wrap:wrap}
+.burow.zu{opacity:.6}
+.busym{flex:0 0 108px;font-weight:650;font-size:14px;min-width:0;overflow:hidden}
+.bux{flex:0 0 74px;font-family:var(--mono);font-size:19px;font-weight:600;text-align:right}
+.bumeta{flex:1;min-width:190px;font-size:12.5px;line-height:1.65}
+.bubtn{display:flex;gap:6px;flex:0 0 auto}
+.bubew{padding:15px 17px;border-radius:12px;border:1px solid var(--border);background:var(--panel);margin-bottom:18px}
+.bubew.gut{border-color:rgba(20,241,149,.3)}
+.bubew.schlecht{border-color:rgba(255,77,106,.3)}
+.bubew h4{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--mu2);margin-bottom:11px;font-weight:600}
+.bubewrow{display:flex;gap:14px;align-items:baseline;padding:6px 0;font-size:13px;flex-wrap:wrap}
+.bubewrow span:first-child{flex:0 0 168px;color:var(--mu)}
+.bubewrow b{font-family:var(--mono)}
 .fit{display:flex;flex-direction:column;gap:10px}
 .fitrow{padding:13px;border-radius:10px;border:1px solid var(--border)}
 .fitrow.yes{border-color:rgba(20,241,149,.3);background:rgba(20,241,149,.05)}
@@ -510,6 +535,7 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
       <button class="tab" data-view="wache">Wache</button>
       <button class="tab" data-view="spuren">Spuren</button>
       <button class="tab" data-view="watchlist">Watchlist</button>
+      <button class="tab" data-view="buch">Tagebuch</button>
       <button class="tab" data-view="heute">Heute</button>
       <button class="tab" data-view="kohorte">Messung</button>
       <button class="tab" data-view="regeln">Regeln</button>
@@ -683,6 +709,24 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
   </section>
 
   <!-- ============ REGELN ============ -->
+  <!-- ============ TAGEBUCH ============ -->
+  <section class="view" id="view-buch">
+    <div id="tg-hinweis"></div>
+    <div class="searchrow" style="margin-bottom:10px">
+      <input id="bu-mint" placeholder="Adresse oder pump.fun-Link des Coins, den du gekauft hast" spellcheck="false" autocomplete="off">
+      <input id="bu-eur" type="number" step="0.5" min="0" value="5" style="max-width:110px" title="Einsatz in Euro">
+      <button class="btn btn-p" id="bu-add">Eintragen</button>
+    </div>
+    <p class="hint" style="margin-bottom:16px">
+      Trag hier ein, was du <b>wirklich</b> gekauft hast. Alles andere in dieser App misst den Markt —
+      das hier misst, ob der Prüfstand dir <b style="color:var(--mu)">tatsächlich hilft</b>.
+      Zu jeder Position wird die Punktzahl von damals gespeichert; nach etwa zwanzig geschlossenen
+      Positionen kann die App dir sagen, ob grüne Coins bei dir wirklich besser laufen als der Rest.
+      Läuft eine Position ins Ziel, meldet sie sich — auch auf dem Handy.
+    </p>
+    <div id="bu-out"></div>
+  </section>
+
   <section class="view" id="view-heute">
     <h2>Stichworte des Tages</h2>
     <p class="sub">Worüber wird gerade geredet — sortiert nach denselben Schubladen, in denen auch
@@ -822,6 +866,7 @@ for(var i=0;i<tabs.length;i++){
     document.querySelectorAll(".tab").forEach(function(t){ t.classList.toggle("on", t===this); }, this);
     document.querySelectorAll(".view").forEach(function(s){ s.classList.toggle("on", s.id==="view-"+v); });
     if(v==="pruef" && !PF.geladen){ PF.geladen = true; ladePruefstand(); }
+    if(v==="buch"){ tgPruefen(); renderBuch(); buchVerfolgen(); }
     if(v==="jetzt" && !jetztLoaded){ jetztLoaded = true; loadJetzt(); }
     if(v==="radar" && !radarLoaded) loadRadar();
     if(v==="wache" && !wacheLoaded){ wacheLoaded = true; loadWache(); }
@@ -932,6 +977,7 @@ function ladePruefstand(){
       if(!j || !j.ok){ box.innerHTML = '<div class="err">'+esc((j&&j.error)||"Konnte nicht geladen werden.")+'</div>'; return; }
       PF.coins = j.coins || [];
       pfHandlesMerken(PF.coins);
+      devsMerken(PF.coins);
       renderPruefstand(j);
       pfAutoTief();
     })
@@ -1027,6 +1073,17 @@ function pfKarte(c){
     }
   }
 
+  // Was wir ueber diesen Ersteller aus ANDEREN Coins schon wissen. Eine
+  // Fabrik bleibt eine Fabrik, auch beim naechsten Start.
+  var dev = devBekannt(c);
+  if(dev){
+    extra += pfZeile({
+      label: "Ersteller (bekannt)", stufe: dev.stufe, beweis: true,
+      text: "Dieser Ersteller ist dir hier schon bei " + dev.anzahl +
+        (dev.anzahl === 1 ? " anderen Coin" : " anderen Coins") + " begegnet. " + (dev.text || "")
+    });
+  }
+
   var alter = c.ageMinutes == null ? "—"
     : c.ageMinutes < 90 ? c.ageMinutes + " Min"
     : c.ageMinutes < 1440 ? Math.round(c.ageMinutes/60) + " Std"
@@ -1058,6 +1115,11 @@ function pfKarte(c){
       '<button class="btn btn-sm btn-g" data-pf-auf="'+esc(c.address)+'">'+(offen?"Checkliste zu":"Checkliste ("+checks.length+" Punkte)")+'</button>'+
       (tief ? '' : '<button class="btn btn-sm btn-p" data-pf-tief="'+esc(c.address)+'">Launch prüfen</button>')+
       (PF.wer[c.address] ? '' : '<button class="btn btn-sm btn-g" data-pf-wer="'+esc(c.address)+'">Wer kauft hier?</button>')+
+      // Der Knopf, der aus einer Anzeige eine Messung macht: was du
+      // wirklich gekauft hast, mit dem Urteil von genau jetzt.
+      (BUCH.positionen.some(function(p){ return p.mint === c.address && !p.zu; })
+        ? '<span class="pfmark m-best" style="align-self:center">im Tagebuch</span>'
+        : '<button class="btn btn-sm btn-g" data-pf-kauf="'+esc(c.address)+'">Gekauft</button>')+
       '<a class="btn btn-sm btn-g" href="'+esc(safeUrl(c.pumpUrl)||safeUrl(c.dexUrl))+'" target="_blank" rel="noopener">Chart öffnen</a>'+
       '<button class="btn btn-sm btn-g" data-pf-scan="'+esc(c.address)+'">Im Scanner</button>'+
     '</div>'+
@@ -1289,6 +1351,22 @@ function werKauft(mint){
       j.bestand = rosterAusKaeufer(mint, j, coin);
       j.zusammenlauf = zusammenlaufPruefen(mint, j, coin);
       pfNeuZeichnen(mint);
+      // Das stärkste Signal, das hier entstehen kann - das darf nicht
+      // in einer Karte verschwinden, die gerade niemand ansieht.
+      if(j.zusammenlauf){
+        popAlert({
+          kind: "cluster",
+          titel: "★ Zusammenlauf: " + ((coin && coin.symbol) || kurz(mint)),
+          symbol: (coin && coin.symbol) || "?",
+          mint: mint,
+          plain: "Zusammenlauf bei " + ((coin && coin.symbol) || kurz(mint)),
+          info: esc(j.zusammenlauf.text)
+        });
+        meldeAufsHandy("★ <b>Zusammenlauf: " + ((coin && coin.symbol) || "?") + "</b>\n" +
+          j.zusammenlauf.anzahl + " Wallets aus deinem Bestand sind gleichzeitig drin — und gehören nicht zusammen." +
+          (coin && coin.marketCap ? "\nMarktwert " + money(coin.marketCap) : "") +
+          "\n\nhttps://pump.fun/coin/" + mint);
+      }
     })
     .catch(function(e){
       if(e && e.locked) return;
@@ -3505,6 +3583,474 @@ function zusammenlaufPruefen(mint, bild, coin){
   };
 }
 
+/* =====================================================================
+   DER WEG AUFS HANDY
+
+   Alles, was diese App erkennt, war bisher wertlos, sobald der Laptop
+   zu war. Und genau dann passiert es: der Zusammenlauf nachts, das
+   Fuenffache waehrend du einkaufst.
+
+   Der Bot-Token darf nicht in den Browser, deshalb geht die Nachricht
+   ueber /api/melde. Die Oberflaeche schickt nur den Text.
+   ===================================================================== */
+
+var TG = { bereit: null, fehlt: [], gefragt: false };
+
+function tgPruefen(){
+  if(TG.gefragt) return;
+  TG.gefragt = true;
+  apiFetch("/api/melde?pruefen=1")
+    .then(function(j){
+      if(!j || !j.ok) return;
+      TG.bereit = !!j.bereit;
+      TG.fehlt = j.fehlt || [];
+      tgHinweis();
+    })
+    .catch(function(){});
+}
+
+/** Wenn der Kanal fehlt, muss das dastehen - nicht still scheitern. */
+function tgHinweis(){
+  var box = el("tg-hinweis");
+  if(!box) return;
+  if(TG.bereit){
+    box.innerHTML = '<div class="tgok">✓ Telegram ist verbunden. Wichtige Meldungen kommen aufs Handy, '+
+      'auch wenn dieses Fenster zu ist. <button class="btn btn-sm btn-g" id="tg-test">Testnachricht</button></div>';
+    var b = el("tg-test");
+    if(b) b.addEventListener("click", function(){
+      b.disabled = true; b.textContent = "Schicke …";
+      meldeAufsHandy("🔔 <b>Test</b>\nWenn du das liest, funktioniert der Kanal.")
+        .then(function(ok){ b.disabled = false; b.textContent = ok ? "Angekommen ✓" : "Ging nicht"; });
+    });
+    return;
+  }
+  if(TG.bereit === false){
+    box.innerHTML = '<div class="tgfehlt"><b>Telegram ist noch nicht eingerichtet</b> — '+
+      'die App kann dich deshalb nur erreichen, solange dieses Fenster offen ist. '+
+      'Es fehlt: <code>'+esc(TG.fehlt.join("</code>, <code>"))+'</code>. '+
+      '<span class="mu2">Drei Schritte: in Telegram <b>@BotFather</b> anschreiben → <b>/newbot</b> → '+
+      'Token kopieren. Dann <b>@userinfobot</b> anschreiben → deine Chat-ID kopieren. '+
+      'Beides in Vercel unter Settings → Environment Variables eintragen und einmal neu deployen.</span></div>';
+  }
+}
+
+/**
+ * Eine Meldung aufs Handy schicken.
+ *
+ * Scheitert absichtlich leise: eine nicht zugestellte Nachricht darf
+ * nie den Rest der App aufhalten.
+ */
+function meldeAufsHandy(text){
+  if(TG.bereit === false) return Promise.resolve(false);
+  return apiFetch("/api/melde?text=" + encodeURIComponent(String(text||"").slice(0,700)))
+    .then(function(j){
+      if(j && j.bereit === false){ TG.bereit = false; TG.fehlt = j.fehlt || []; tgHinweis(); return false; }
+      return !!(j && j.gesendet);
+    })
+    .catch(function(){ return false; });
+}
+
+/* =====================================================================
+   DIE FABRIKEN
+
+   Ein Ersteller mit 4265 Starts und 21 Graduierungen ist keine
+   Einzelfallbewertung wert - der ist beim naechsten Coin genauso eine
+   Fabrik wie bei diesem. Bisher fing die Bewertung bei jedem seiner
+   Coins wieder bei null an.
+   ===================================================================== */
+
+var DEVS = {};
+try {
+  var droh = localStorage.getItem("sonar_devs");
+  if(droh) DEVS = JSON.parse(droh) || {};
+} catch(e){}
+
+function devsSave(){
+  try {
+    var keys = Object.keys(DEVS);
+    if(keys.length > 300){
+      keys.sort(function(a,b){ return (DEVS[a].wann||0) - (DEVS[b].wann||0); });
+      keys.slice(0, keys.length - 300).forEach(function(k){ delete DEVS[k]; });
+    }
+    localStorage.setItem("sonar_devs", JSON.stringify(DEVS));
+  } catch(e){}
+}
+
+/** Aus der Coinliste lernen, welche Ersteller Fabriken sind. */
+function devsMerken(coins){
+  var neu = false;
+  (coins||[]).forEach(function(c){
+    if(!c.devAddress) return;
+    var z = (c.checks||[]).find(function(x){ return x.schluessel === "dev"; });
+    if(!z) return;
+    var e = DEVS[c.devAddress] || { coins: [] };
+    e.wann = Date.now();
+    e.stufe = z.stufe;
+    e.text = z.text;
+    e.starts = c.devMints;
+    e.durch = c.devMigrations;
+    if(e.coins.indexOf(c.address) < 0){
+      e.coins.push(c.address);
+      if(e.coins.length > 12) e.coins = e.coins.slice(-12);
+    }
+    DEVS[c.devAddress] = e;
+    neu = true;
+  });
+  if(neu) devsSave();
+}
+
+/**
+ * Was wir ueber diesen Ersteller schon wissen - aus ANDEREN Coins.
+ *
+ * Nur wenn es andere gibt: dass sein aktueller Coin in der Liste steht,
+ * ist keine Vorgeschichte.
+ */
+function devBekannt(c){
+  if(!c || !c.devAddress) return null;
+  var e = DEVS[c.devAddress];
+  if(!e) return null;
+  var andere = (e.coins||[]).filter(function(a){ return a !== c.address; });
+  if(!andere.length) return null;
+  return { anzahl: andere.length, stufe: e.stufe, text: e.text };
+}
+
+/* =====================================================================
+   DAS TAGEBUCH
+
+   Der wichtigste Teil des ganzen Werkzeugs, und der einzige, der ohne
+   dich nicht funktioniert.
+
+   Alles andere hier misst den Markt. Das hier misst DICH: was du
+   wirklich gekauft hast, zu welchem Marktwert, was der Pruefstand in
+   dem Moment dazu gesagt hat - und was daraus geworden ist.
+
+   Ohne diese Daten bleibt jede Aussage ueber das Werkzeug eine
+   Behauptung. Mit ihnen laesst sich die einzige Frage beantworten, auf
+   die es ankommt: kaufst du mit dem Pruefstand BESSER als ohne? Denn
+   wenn gruene Coins genauso oft sterben wie rote, ist die ganze
+   Checkliste Dekoration - und das will man wissen, nicht ahnen.
+
+   Deshalb wird zu jedem Kauf die Punktzahl mitgespeichert. Nach
+   zwanzig Positionen zeigt die Auswertung, ob die Punkte tatsaechlich
+   etwas mit dem Ausgang zu tun haben.
+   ===================================================================== */
+
+var BUCH = { positionen: [] };
+try {
+  var broh = localStorage.getItem("sonar_buch");
+  if(broh) BUCH = Object.assign(BUCH, JSON.parse(broh) || {});
+} catch(e){}
+
+function buchSave(){
+  try {
+    if(BUCH.positionen.length > 400) BUCH.positionen = BUCH.positionen.slice(-400);
+    localStorage.setItem("sonar_buch", JSON.stringify(BUCH));
+  } catch(e){}
+}
+
+function buchOffen(){ return BUCH.positionen.filter(function(p){ return !p.zu; }); }
+
+/**
+ * Eine Position eintragen.
+ *
+ * `coin` ist optional - kommt der Eintrag aus dem Pruefstand, wird
+ * alles automatisch mitgenommen, was spaeter fuer die Auswertung
+ * gebraucht wird. Von Hand eingetragene Positionen funktionieren auch,
+ * nur ohne Urteil.
+ */
+function buchEintragen(mint, symbol, einsatzEur, preis, coin){
+  if(!mint) return null;
+  var p = {
+    id: "p" + Date.now() + Math.random().toString(36).slice(2, 6),
+    mint: mint,
+    symbol: symbol || "?",
+    eur: Number(einsatzEur) || 0,
+    preis: Number(preis) || 0,
+    mcap: (coin && coin.marketCap) || null,
+    punkte: (coin && coin.punkte) != null ? coin.punkte : null,
+    ampel: (coin && coin.ampel) || null,
+    ts: Date.now(),
+    maxX: 1,
+    jetztX: 1,
+    zu: false,
+    ergebnis: null,
+    gemeldet: {}
+  };
+  BUCH.positionen.push(p);
+  buchSave();
+  renderBuch();
+  return p;
+}
+
+function buchSchliessen(id, xWert){
+  var p = BUCH.positionen.find(function(x){ return x.id === id; });
+  if(!p) return;
+  p.zu = true;
+  p.zuTs = Date.now();
+  p.verkauftX = xWert != null ? xWert : p.jetztX;
+  p.ergebnis = p.verkauftX >= ZIEL_X ? "ziel" : p.verkauftX >= 1 ? "plus" : "minus";
+  buchSave();
+  renderBuch();
+}
+
+function buchLoeschen(id){
+  BUCH.positionen = BUCH.positionen.filter(function(x){ return x.id !== id; });
+  buchSave();
+  renderBuch();
+}
+
+/**
+ * Nachsehen, was aus den offenen Positionen geworden ist - und dich
+ * rechtzeitig anstupsen.
+ *
+ * Kleine Positionen scheitern selten am Einstieg. Sie scheitern daran,
+ * dass niemand den Ausstieg festhaelt und man dem Kurs beim
+ * Zurueckfallen zusieht. Genau dagegen ist dieser Teil da.
+ */
+function buchVerfolgen(){
+  var offen = buchOffen().filter(function(p){ return p.preis > 0; }).slice(-30);
+  if(!offen.length){ renderBuch(); return; }
+
+  apiFetch("/api/quote?mints=" + encodeURIComponent(offen.map(function(p){ return p.mint; }).join(",")))
+    .then(function(j){
+      if(!j || !j.ok) return;
+      var kurse = {};
+      (j.quotes||[]).forEach(function(q){ kurse[q.mint] = q.priceUsd; });
+      var jetzt = Date.now();
+
+      offen.forEach(function(p){
+        var kurs = kurse[p.mint];
+        var alter = jetzt - p.ts;
+
+        if(kurs > 0 && p.preis > 0){
+          p.jetztX = Math.round((kurs / p.preis) * 100) / 100;
+          if(p.jetztX > (p.maxX || 1)) p.maxX = p.jetztX;
+          p.kurs = kurs;
+        }
+
+        p.gemeldet = p.gemeldet || {};
+
+        // Ziel erreicht - die Meldung, fuer die du gekauft hast.
+        if(p.jetztX >= ZIEL_X && !p.gemeldet.ziel){
+          p.gemeldet.ziel = true;
+          buchMelden(p, "ziel");
+        }
+        // Der Rückweg: einmal oben gewesen, jetzt deutlich darunter.
+        else if((p.maxX||1) >= 2 && p.jetztX <= (p.maxX * 0.6) && !p.gemeldet.rueck){
+          p.gemeldet.rueck = true;
+          buchMelden(p, "rueck");
+        }
+        // Die Hälfte weg.
+        else if(p.jetztX <= 0.5 && !p.gemeldet.halb){
+          p.gemeldet.halb = true;
+          buchMelden(p, "halb");
+        }
+        // Kein Kurs mehr nach zwei Stunden: tot.
+        else if(!kurs && alter > 2*3600*1000 && !p.gemeldet.tot){
+          p.gemeldet.tot = true;
+          p.zu = true; p.zuTs = jetzt; p.verkauftX = 0; p.ergebnis = "tot";
+          buchMelden(p, "tot");
+        }
+      });
+      buchSave();
+      renderBuch();
+    })
+    .catch(function(){});
+}
+
+/** Eine Positionsmeldung - auf den Bildschirm UND aufs Handy. */
+function buchMelden(p, art){
+  var eur = p.eur || 5;
+  var texte = {
+    ziel: {
+      titel: "🎯 " + p.symbol + " bei " + p.jetztX + "× — verkaufen",
+      info: "Aus <b>" + eur.toFixed(2) + " €</b> sind rechnerisch <b>" + (eur * p.jetztX).toFixed(2) + " €</b> geworden.<br>" +
+            "<span class=\"mu2\">Das ist der Moment, für den du gekauft hast. Er wird nicht besser, wenn du wartest.</span>",
+      tg: "🎯 <b>" + p.symbol + " bei " + p.jetztX + "×</b>\nAus " + eur.toFixed(2) + " € sind " +
+          (eur * p.jetztX).toFixed(2) + " € geworden. Verkaufen."
+    },
+    rueck: {
+      titel: "↩ " + p.symbol + " fällt zurück",
+      info: "War bei <b>" + p.maxX + "×</b>, steht jetzt bei <b>" + p.jetztX + "×</b>.<br>" +
+            "<span class=\"mu2\">Der Gipfel ist wahrscheinlich durch. Immer noch " +
+            (eur * p.jetztX).toFixed(2) + " € statt " + eur.toFixed(2) + " €.</span>",
+      tg: "↩ <b>" + p.symbol + "</b> war bei " + p.maxX + "×, steht bei " + p.jetztX + "×. Gipfel wohl durch."
+    },
+    halb: {
+      titel: "📉 " + p.symbol + ": die Hälfte weg",
+      info: "Steht bei <b>" + p.jetztX + "×</b> deines Einstiegs.<br>" +
+            "<span class=\"mu2\">Bei " + eur.toFixed(2) + " € Einsatz verkraftbar. Aber die Wette ist wohl vorbei.</span>",
+      tg: "📉 <b>" + p.symbol + "</b> bei " + p.jetztX + "× — die Hälfte weg."
+    },
+    tot: {
+      titel: "✝ " + p.symbol + ": kein Kurs mehr",
+      info: "Keine Börse liefert noch einen Preis.<br>" +
+            "<span class=\"mu2\">Das passiert. Deshalb " + eur.toFixed(2) + " € und nicht 50.</span>",
+      tg: "✝ <b>" + p.symbol + "</b> — kein Kurs mehr. Position als Totalverlust verbucht."
+    }
+  };
+  var t = texte[art] || texte.ziel;
+  popAlert({ kind: art === "ziel" ? "cluster" : "kauf", titel: t.titel, symbol: p.symbol, mint: p.mint, plain: t.titel, info: t.info });
+  meldeAufsHandy(t.tg + "\n\nhttps://pump.fun/coin/" + p.mint);
+}
+
+/**
+ * Die Auswertung - die Frage, auf die es ankommt.
+ *
+ * Nicht "wie viele Treffer hattest du", sondern: haben die Coins mit
+ * vielen Punkten oefter funktioniert als die mit wenigen? Wenn nicht,
+ * ist die Checkliste Dekoration, und das gehoert dann auch dagesagt.
+ */
+function buchBilanz(){
+  var zu = BUCH.positionen.filter(function(p){ return p.zu; });
+  var mitUrteil = zu.filter(function(p){ return p.punkte != null; });
+  var gut = mitUrteil.filter(function(p){ return p.punkte >= 62; });
+  var rest = mitUrteil.filter(function(p){ return p.punkte < 62; });
+
+  var quote = function(liste){
+    if(!liste.length) return null;
+    return Math.round((liste.filter(function(p){ return (p.verkauftX||0) >= ZIEL_X; }).length / liste.length) * 100);
+  };
+  var schnitt = function(liste){
+    if(!liste.length) return null;
+    return Math.round((liste.reduce(function(s,p){ return s + (p.verkauftX||0); }, 0) / liste.length) * 100) / 100;
+  };
+  var einsatz = zu.reduce(function(s,p){ return s + (p.eur||0); }, 0);
+  var erloes  = zu.reduce(function(s,p){ return s + (p.eur||0) * (p.verkauftX||0); }, 0);
+
+  return {
+    offen: buchOffen().length,
+    zu: zu.length,
+    einsatz: Math.round(einsatz * 100) / 100,
+    erloes: Math.round(erloes * 100) / 100,
+    ergebnis: Math.round((erloes - einsatz) * 100) / 100,
+    quoteGesamt: quote(zu),
+    gruen: { n: gut.length, quote: quote(gut), schnitt: schnitt(gut) },
+    andere: { n: rest.length, quote: quote(rest), schnitt: schnitt(rest) },
+    genug: mitUrteil.length >= 12
+  };
+}
+
+/* ---- Das Tagebuch, sichtbar ---------------------------------------- */
+
+function buchZeile(p){
+  var x = p.zu ? (p.verkauftX || 0) : (p.jetztX || 1);
+  var farbe = x >= ZIEL_X ? "up" : x >= 1 ? "" : "dn";
+  var wert = (p.eur || 0) * x;
+  var urteil = p.punkte != null
+    ? '<span class="pfmark '+(p.ampel==="gruen"?"m-gut":p.ampel==="gelb"?"m-mit":"m-sperr")+'">'+p.punkte+' Punkte beim Kauf</span>'
+    : '<span class="pfmark m-unbek">ohne Urteil eingetragen</span>';
+
+  return '<div class="burow'+(p.zu?" zu":"")+'">'+
+    '<div class="busym">'+esc(p.symbol||"?")+'<div class="mu2" style="font-size:11px;font-family:var(--mono)">'+esc(kurz(p.mint))+'</div></div>'+
+    '<div class="bux '+farbe+'">'+x.toFixed(2)+'×</div>'+
+    '<div class="bumeta">'+
+      '<div>'+(p.eur||0).toFixed(2)+' € → <b class="'+farbe+'">'+wert.toFixed(2)+' €</b>'+
+        (p.mcap ? ' <span class="mu2">· Einstieg bei '+money(p.mcap)+'</span>' : '')+'</div>'+
+      '<div class="mu2">'+tageHer(p.ts)+' gekauft'+
+        (p.zu ? ' · <b>geschlossen</b> ('+(p.ergebnis==="tot"?"tot":p.ergebnis==="ziel"?"Ziel erreicht":p.ergebnis==="plus"?"im Plus":"im Minus")+')'
+              : (p.maxX > (p.jetztX||1) ? ' · war schon bei '+p.maxX+'×' : ''))+'</div>'+
+      '<div style="margin-top:5px">'+urteil+'</div>'+
+    '</div>'+
+    '<div class="bubtn">'+
+      (p.zu ? '' : '<button class="btn btn-sm btn-g" data-bu-zu="'+esc(p.id)+'">verkauft</button>')+
+      '<a class="btn btn-sm btn-g" href="https://pump.fun/coin/'+esc(p.mint)+'" target="_blank" rel="noopener">Chart</a>'+
+      '<button class="btn btn-sm btn-g" data-bu-weg="'+esc(p.id)+'" title="Eintrag löschen">×</button>'+
+    '</div>'+
+  '</div>';
+}
+
+function renderBuch(){
+  var box = el("bu-out");
+  if(!box) return;
+  var b = buchBilanz();
+
+  var kopf = '<div class="pfsum">'+
+    '<div class="pfsumbox"><b>'+b.offen+'</b>offen</div>'+
+    '<div class="pfsumbox"><b>'+b.zu+'</b>geschlossen</div>'+
+    '<div class="pfsumbox"><b class="'+(b.ergebnis>=0?"up":"dn")+'">'+(b.ergebnis>=0?"+":"")+b.ergebnis.toFixed(2)+' €</b>unterm Strich</div>'+
+    (b.quoteGesamt != null ? '<div class="pfsumbox"><b>'+b.quoteGesamt+'%</b>erreichten '+ZIEL_X+'×</div>' : '')+
+  '</div>';
+
+  // Die eigentliche Frage: taugt der Prüfstand etwas?
+  var beweis = "";
+  if(b.genug){
+    var besser = (b.gruen.quote||0) - (b.andere.quote||0);
+    beweis = '<div class="bubew '+(besser >= 15 ? "gut" : besser <= -5 ? "schlecht" : "offen")+'">'+
+      '<h4>Taugt der Prüfstand etwas?</h4>'+
+      '<div class="bubewrow"><span>Grüne Coins ('+b.gruen.n+')</span>'+
+        '<b>'+(b.gruen.quote==null?"—":b.gruen.quote+"%")+' erreichten '+ZIEL_X+'×</b>'+
+        '<span class="mu2">Ø '+(b.gruen.schnitt==null?"—":b.gruen.schnitt+"×")+'</span></div>'+
+      '<div class="bubewrow"><span>Alle anderen ('+b.andere.n+')</span>'+
+        '<b>'+(b.andere.quote==null?"—":b.andere.quote+"%")+' erreichten '+ZIEL_X+'×</b>'+
+        '<span class="mu2">Ø '+(b.andere.schnitt==null?"—":b.andere.schnitt+"×")+'</span></div>'+
+      '<p class="sub" style="margin-top:10px">'+
+        (besser >= 15
+          ? '<b style="color:var(--grn)">Die Punkte sagen etwas aus.</b> Grüne Coins laufen bei dir spürbar besser. Halte dich an sie.'
+          : besser <= -5
+            ? '<b style="color:var(--red)">Die Punkte sagen bisher nichts aus.</b> Grüne Coins laufen bei dir nicht besser als der Rest — '+
+              'das ist ein echtes Ergebnis und heißt: der Checkliste noch nicht blind vertrauen.'
+            : 'Noch kein klarer Unterschied. Weiter eintragen.')+
+      '</p></div>';
+  } else {
+    var fehlen = 12 - BUCH.positionen.filter(function(p){ return p.zu && p.punkte != null; }).length;
+    beweis = '<div class="bubew offen"><h4>Taugt der Prüfstand etwas?</h4>'+
+      '<p class="sub">Noch <b>'+Math.max(0,fehlen)+'</b> geschlossene Positionen mit Urteil, dann kann die App '+
+      'ausrechnen, ob grüne Coins bei dir wirklich besser laufen als der Rest. '+
+      'Das ist die einzige Zahl, die beweist, dass dieses Werkzeug etwas bringt — oder eben nicht.</p></div>';
+  }
+
+  if(!BUCH.positionen.length){
+    box.innerHTML = kopf + beweis + '<div class="empty">Noch nichts eingetragen.<br>'+
+      '<span class="mu2">Am einfachsten geht es über den Prüfstand: dort steht bei jedem Coin ein '+
+      '„Gekauft"-Knopf, der alles automatisch mitnimmt.</span></div>';
+    return;
+  }
+
+  var offen = BUCH.positionen.filter(function(p){ return !p.zu; }).sort(function(a,b){ return b.ts - a.ts; });
+  var zu    = BUCH.positionen.filter(function(p){ return p.zu; }).sort(function(a,b){ return (b.zuTs||b.ts) - (a.zuTs||a.ts); });
+
+  box.innerHTML = kopf + beweis +
+    (offen.length ? '<h3 class="busec">Offen ('+offen.length+')</h3>' + offen.map(buchZeile).join("") : '') +
+    (zu.length ? '<h3 class="busec">Geschlossen ('+zu.length+')</h3>' + zu.slice(0,40).map(buchZeile).join("") : '');
+}
+
+document.addEventListener("click", function(ev){
+  var z = ev.target.closest && ev.target.closest("[data-bu-zu]");
+  if(z){ buchSchliessen(z.getAttribute("data-bu-zu"), null); return; }
+  var w = ev.target.closest && ev.target.closest("[data-bu-weg]");
+  if(w){ buchLoeschen(w.getAttribute("data-bu-weg")); return; }
+  var g = ev.target.closest && ev.target.closest("[data-pf-kauf]");
+  if(g){
+    var adr = g.getAttribute("data-pf-kauf");
+    var c = PF.coins.find(function(x){ return x.address === adr; });
+    if(!c) return;
+    buchEintragen(adr, c.symbol, Number((el("bu-eur")||{}).value) || 5, c.priceUsd, c);
+    g.textContent = "Im Tagebuch ✓";
+    g.disabled = true;
+  }
+});
+
+(function(){
+  var add = el("bu-add");
+  if(add) add.addEventListener("click", function(){
+    var roh = (el("bu-mint")||{}).value || "";
+    var m = String(roh).match(/[1-9A-HJ-NP-Za-km-z]{32,44}/);
+    if(!m){ el("bu-mint").style.borderColor = "var(--red)"; return; }
+    el("bu-mint").style.borderColor = "";
+    var eur = Number((el("bu-eur")||{}).value) || 5;
+    // Den aktuellen Kurs holen, sonst laesst sich spaeter kein
+    // Vielfaches berechnen - und ohne das ist der Eintrag wertlos.
+    apiFetch("/api/quote?mints=" + encodeURIComponent(m[0]))
+      .then(function(j){
+        var q = (j && j.quotes && j.quotes[0]) || {};
+        buchEintragen(m[0], q.symbol || "?", eur, q.priceUsd || 0, null);
+        el("bu-mint").value = "";
+      })
+      .catch(function(){ buchEintragen(m[0], "?", eur, 0, null); });
+  });
+})();
+
 var LEARN = { alerts: [], kontrolle: [], schwelle: 45, stand: "" };
 try {
   var roh = localStorage.getItem("sonar_learn");
@@ -4084,6 +4630,13 @@ setTimeout(learnFollowUp, 8000);
 // Behauptung statt einer gemessenen Zahl.
 setInterval(vorlaufPruefen, 4*60*1000);
 setTimeout(vorlaufPruefen, 15000);
+
+// Die eigenen Positionen laufen im Zweiminutentakt mit - haeufiger als
+// alles andere, weil hier echtes Geld drinsteckt und die Meldung bei
+// 5x nichts wert ist, wenn sie zehn Minuten zu spaet kommt. Kostet
+// nichts: /api/quote ist Jupiter.
+setInterval(buchVerfolgen, 2*60*1000);
+setTimeout(function(){ tgPruefen(); buchVerfolgen(); }, 6000);
 
 // Die Messung laeuft unabhaengig von allem anderen mit: aufnehmen im
 // Stundentakt, nachschauen alle vier Minuten. Sie braucht keinen
