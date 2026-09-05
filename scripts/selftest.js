@@ -2252,6 +2252,20 @@ async function main() {
     assert.ok(/slice\(0,\s*3\)/.test(f.slice(0, 500)), "Deckel auf drei fehlt");
   });
 
+  await check("Marktzahlen kommen frisch, Launch-Daten aus dem Cache", () => {
+    // Live gefunden: Kopfzeile 9,1k, Checkliste 3k. Die Tiefpruefung
+    // liegt zwoelf Stunden im Cache - richtig fuer Launch und Story,
+    // toedlich fuer Marktwert und Liquiditaet.
+    const f = appQuelle.slice(appQuelle.indexOf("function pfKarte"));
+    const kopf = f.slice(0, 2500);
+    assert.ok(/var FEST = \{ bundle: 1, story: 1, wash: 1, kaeufer: 1 \}/.test(kopf),
+      "es wird nicht zwischen festen und frischen Zeilen getrennt");
+    assert.ok(/\(c\.checks \|\| \[\]\)\.concat\(extra\)/.test(kopf),
+      "die freien Zeilen kommen nicht frisch aus der Liste");
+    assert.ok(/gebuendelt \|\| tief\.urteil\.gemacht\) \? "rot"/.test(kopf),
+      "ein bewiesenes Bundle darf nicht gruen werden, nur weil der Kurs steigt");
+  });
+
   await check("hoechstens zwoelf Serverless-Funktionen", () => {
     // Der Fehler, der fuenf Commits lang unsichtbar blieb: Vercel
     // erlaubt im kostenlosen Tarif zwoelf Funktionen. Bei dreizehn
