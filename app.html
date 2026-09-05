@@ -3627,7 +3627,10 @@ function tgHinweis(){
   if(TG.bereit === false){
     box.innerHTML = '<div class="tgfehlt"><b>Telegram ist noch nicht eingerichtet</b> — '+
       'die App kann dich deshalb nur erreichen, solange dieses Fenster offen ist. '+
-      'Es fehlt: <code>'+esc(TG.fehlt.join("</code>, <code>"))+'</code>. '+
+      // Jeden Namen einzeln maskieren und ERST DANN verbinden - sonst
+      // maskiert man die eigenen Trennzeichen gleich mit, und im Kasten
+      // steht woertlich "TELEGRAM_BOT_TOKEN</code>, <code>".
+      'Es fehlt: '+TG.fehlt.map(function(f){ return '<code>'+esc(f)+'</code>'; }).join(", ")+'. '+
       '<span class="mu2">Drei Schritte: in Telegram <b>@BotFather</b> anschreiben → <b>/newbot</b> → '+
       'Token kopieren. Dann <b>@userinfobot</b> anschreiben → deine Chat-ID kopieren. '+
       'Beides in Vercel unter Settings → Environment Variables eintragen und einmal neu deployen.</span></div>';
