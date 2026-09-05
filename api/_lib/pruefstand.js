@@ -191,20 +191,29 @@ function checkFluss(c) {
   );
 }
 
+/**
+ * Halter.
+ *
+ * `holderChange` ist bei Jupiter eine PROZENTZAHL, keine Anzahl. Live
+ * stand hier deshalb "199 Halter, +206.15384615384613 in der letzten
+ * Stunde" - eine Zahl, die weder gerundet war noch die Einheit nannte,
+ * die sie meint. Beides ist hier geradegezogen.
+ */
 function checkHalter(c) {
   const n = c.holderCount;
   const dazu = c.holderChangeH1;
+  const proz = dazu == null ? null : Math.round(dazu) + "%";
   if (n == null) return zeile("halter", "Halter", "unbekannt", "Halterzahl unbekannt.", -3, false);
   if (n < 25) {
     return zeile("halter", "Halter", "schlecht", "Nur " + n + " Halter. Das ist noch niemand.", -12, false);
   }
   if (dazu != null && dazu <= 0) {
-    return zeile("halter", "Halter", "mittel", n + " Halter, aber in der letzten Stunde kein Zuwachs (" + dazu + ").", -6, false);
+    return zeile("halter", "Halter", "mittel", n + " Halter, aber in der letzten Stunde kein Zuwachs (" + proz + ").", -6, false);
   }
-  if (dazu != null && dazu >= 20) {
-    return zeile("halter", "Halter", "gut", n + " Halter, +" + dazu + " in der letzten Stunde. Da kommt gerade wer dazu.", 14, false);
+  if (dazu != null && dazu >= 25) {
+    return zeile("halter", "Halter", "gut", n + " Halter, " + proz + " mehr in der letzten Stunde. Da kommt gerade wer dazu.", 14, false);
   }
-  return zeile("halter", "Halter", "gut", n + " Halter" + (dazu != null ? ", +" + dazu + " in der letzten Stunde" : "") + ".", 6, false);
+  return zeile("halter", "Halter", "gut", n + " Halter" + (proz ? ", " + proz + " mehr in der letzten Stunde" : "") + ".", 6, false);
 }
 
 /**
@@ -219,6 +228,19 @@ function checkVerteilung(c) {
   const p = c.topHoldersPct;
   if (p == null) {
     return zeile("verteilung", "Verteilung (Hinweis)", "unbekannt", "Verteilung nicht abrufbar - tief pruefen.", -4, false);
+  }
+  // Die Falle, in die diese Zeile live getappt ist: ein zwei Minuten
+  // alter Coin mit drei Haltern meldet 0% - weil noch alles in der
+  // Kurve liegt und es schlicht keine Halter gibt, die man messen
+  // koennte. "0% - gut gestreut" war daraus die schoenste Luege, die
+  // dieses Werkzeug je erzeugt hat. Null ist kein Bestwert, sondern
+  // die Abwesenheit von Daten.
+  if (p <= 0.5 && (c.holderCount == null || c.holderCount < 30)) {
+    return zeile(
+      "verteilung", "Verteilung (Hinweis)", "unbekannt",
+      "Noch keine messbare Verteilung - es liegt praktisch alles in der Kurve. Das ist keine gute Streuung, das ist noch gar nichts.",
+      -6, false,
+    );
   }
   if (p >= 40) {
     return zeile(
@@ -250,18 +272,45 @@ function checkDev(c) {
   const durch = c.devMigrations;
   if (starts == null) return zeile("dev", "Ersteller", "unbekannt", "Zur Vorgeschichte des Erstellers ist nichts bekannt.", 0, false);
 
-  if (starts >= 10 && (durch || 0) === 0) {
+  const d = durch || 0;
+  const quote = starts > 0 ? d / starts : 0;
+
+  if (starts >= 10 && d === 0) {
     return zeile(
       "dev", "Ersteller", "schlecht",
       "Hat schon " + starts + " Coins gestartet, davon hat es KEINER ueber die Kurve geschafft. Das ist Serienbetrieb.",
       -25, true,
     );
   }
-  if (starts >= 5 && (durch || 0) === 0) {
+  // Live gefunden: "518 Starts, 3 davon durch die Kurve. Der kann es."
+  // Konnte er offensichtlich nicht - das ist eine Quote von einem halben
+  // Prozent und damit eine Fabrik, keine Handschrift. Die alte Regel
+  // fragte nur nach der absoluten Zahl der Erfolge; entscheidend ist
+  // aber das Verhaeltnis.
+  if (starts >= 20 && quote < 0.05) {
+    return zeile(
+      "dev", "Ersteller", "schlecht",
+      starts + " Starts, davon " + d + " durchgekommen - das sind " + (quote * 100).toFixed(1) +
+      "%. Das ist eine Fabrik, kein Ersteller.",
+      -25, true,
+    );
+  }
+  if (starts >= 5 && d === 0) {
     return zeile("dev", "Ersteller", "mittel", starts + " Starts, keiner davon durchgekommen.", -12, true);
   }
-  if ((durch || 0) >= 2) {
-    return zeile("dev", "Ersteller", "gut", starts + " Starts, " + durch + " davon durch die Kurve. Der kann es.", 12, true);
+  if (d >= 2 && quote >= 0.15) {
+    return zeile(
+      "dev", "Ersteller", "gut",
+      starts + " Starts, " + d + " davon durch die Kurve (" + Math.round(quote * 100) + "%). Der kann es.",
+      12, true,
+    );
+  }
+  if (d >= 2) {
+    return zeile(
+      "dev", "Ersteller", "mittel",
+      starts + " Starts, " + d + " durchgekommen - nur " + (quote * 100).toFixed(1) + "%.",
+      -4, true,
+    );
   }
   if (starts <= 2) {
     return zeile("dev", "Ersteller", "gut", starts === 1 ? "Erster Coin dieses Erstellers." : starts + " Coins bisher.", 5, true);
@@ -324,6 +373,32 @@ function ampelVon(punkte, fatal) {
 }
 
 /**
+ * Der Substanz-Deckel.
+ *
+ * Live aufgefallen und der peinlichste Fehler der ersten Fassung: ein
+ * zwei Minuten alter Coin mit drei Haltern und 2.900 Dollar Pool bekam
+ * volle 100 Punkte. Und zwar nicht durch einen Rechenfehler, sondern
+ * durch eine Denkweise: fast jede Pruefung vergibt Punkte, wenn nichts
+ * dagegen spricht - und bei einem Coin, ueber den es noch gar keine
+ * Daten gibt, spricht eben nichts dagegen. Abwesenheit von schlechten
+ * Nachrichten wurde zu einer guten Nachricht.
+ *
+ * Der Deckel dreht das um. Wo zu wenig da ist, um zu urteilen, ist das
+ * hoechste ehrliche Urteil "kann man noch nicht sagen" - und das ist
+ * gelb, nicht gruen.
+ */
+const DECKEL_PUNKTE = 40;
+
+function substanzMangel(c) {
+  const fehlt = [];
+  if (c.holderCount != null && c.holderCount < 25) fehlt.push("kaum Halter");
+  if (c.liquidityUsd != null && c.liquidityUsd < 5000) fehlt.push("fast kein Pool");
+  if (c.ageMinutes != null && c.ageMinutes < 10) fehlt.push("wenige Minuten alt");
+  if ((c.buysH1 || 0) + (c.sellsH1 || 0) < 20) fehlt.push("kaum gehandelt");
+  return fehlt;
+}
+
+/**
  * Die freie Ebene: kostet nichts, laeuft fuer jeden Coin.
  */
 function freiesUrteil(coin) {
@@ -344,6 +419,17 @@ function freiesUrteil(coin) {
   let punkte = 50;
   for (const z of checks) punkte += z.punkte;
   punkte = Math.max(0, Math.min(100, Math.round(punkte)));
+
+  const fehlt = substanzMangel(c);
+  if (fehlt.length >= 2 && punkte > DECKEL_PUNKTE) {
+    punkte = DECKEL_PUNKTE;
+    checks.push(zeile(
+      "substanz", "Zu wenig da", "mittel",
+      "Ueber diesen Coin gibt es noch fast nichts zu wissen (" + fehlt.join(", ") +
+      "). Alles darueber waere geraten - deshalb hoechstens " + DECKEL_PUNKTE + " Punkte.",
+      0, true,
+    ));
+  }
 
   const fatal = checks.some((z) => z.schluessel === "rechte" && z.stufe === "schlecht");
   const schlechte = checks.filter((z) => z.stufe === "schlecht");
@@ -421,7 +507,9 @@ module.exports = {
   freiesUrteil,
   gesamtUrteil,
   platzNachOben,
+  substanzMangel,
   zeile,
+  DECKEL_PUNKTE,
   ZIEL_FAKTOR,
   GIPFEL_UNTEN,
   GIPFEL_TYPISCH,
