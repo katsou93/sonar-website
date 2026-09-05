@@ -15,7 +15,7 @@
  */
 
 const jup = require("./_lib/jupiter");
-const { freiesUrteil } = require("./_lib/pruefstand");
+const { freiesUrteil, FOKUS_UNTEN, FOKUS_OBEN } = require("./_lib/pruefstand");
 const { send, fail, authorized, preflight } = require("./_lib/respond");
 
 const MAX_ALTER_STD = 72;
@@ -35,6 +35,11 @@ module.exports = async function handler(req, res) {
   const limit = zahl(q.limit, 25, 5, 60);
   const minPunkte = zahl(q.minPunkte, 0, 0, 100);
   const nurKurve = String(q.nurKurve || "") === "1";
+  // Das Zielfenster. Standard ist deine Vorgabe 5k bis 40k; die
+  // Oberflaeche kann es aufziehen, wenn man doch mal weiter schauen
+  // will. Null als Obergrenze heisst "nach oben offen".
+  const minMcap = zahl(q.minMcap, FOKUS_UNTEN, 0, 5000000);
+  const maxMcap = zahl(q.maxMcap, FOKUS_OBEN, 0, 50000000);
 
   let gefunden;
   try {
@@ -50,6 +55,14 @@ module.exports = async function handler(req, res) {
     if (!c || !c.address) continue;
     if (c.ageMinutes == null || c.ageMinutes > maxAlter) continue;
     if (nurKurve && c.stage === "graduated") continue;
+
+    // Das Fenster. Ein Coin ohne Marktwert bleibt drin - dazu urteilt
+    // die Checkliste dann "unbekannt", statt ihn stillschweigend
+    // verschwinden zu lassen.
+    if (c.marketCap != null) {
+      if (minMcap > 0 && c.marketCap < minMcap) continue;
+      if (maxMcap > 0 && c.marketCap > maxMcap) continue;
+    }
 
     // Voellig tote Eintraege gar nicht erst bewerten - sie verstopfen nur
     // die Liste und kosten Rechenzeit.
@@ -110,6 +123,8 @@ module.exports = async function handler(req, res) {
       geprueft: roh.length,
       imFenster: kandidaten.length,
       maxAlter: maxAlter,
+      minMcap: minMcap,
+      maxMcap: maxMcap,
       quellen: gefunden.sourceCounts,
       listenOk: gefunden.listsOk,
       listenGesamt: gefunden.listsTotal,

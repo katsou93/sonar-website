@@ -26,6 +26,8 @@
 const jup = require("./_lib/jupiter");
 const { bundleAnalyse } = require("./_lib/bundle");
 const { storyCheck } = require("./_lib/story");
+const { frischeKaeufe } = require("./_lib/kaeufer");
+const { washFrei, rundlaeufer, washUrteil } = require("./_lib/wash");
 const { freiesUrteil, gesamtUrteil } = require("./_lib/pruefstand");
 const { send, fail, authorized, preflight } = require("./_lib/respond");
 
@@ -60,10 +62,15 @@ module.exports = async function handler(req, res) {
   }
   const normal = coin ? jup.normalize(coin, null) : null;
 
-  // Beide Seiten parallel, jede darf einzeln ausfallen.
-  const [bRes, sRes] = await Promise.allSettled([
+  // Drei Seiten parallel, jede darf einzeln ausfallen.
+  //
+  // Die dritte ist neu und kostet nur einen einzigen Aufruf: dieselben
+  // Transaktionen, aus denen die Kaeuferliste entsteht, verraten auch,
+  // ob hier jemand mit sich selbst handelt. Ein Abruf, zwei Antworten.
+  const [bRes, sRes, wRes] = await Promise.allSettled([
     bundleAnalyse(mint),
     storyCheck(normal || { address: mint }, begriffe, null),
+    frischeKaeufe(mint, 60),
   ]);
 
   const bundle = bRes.status === "fulfilled"
@@ -72,8 +79,12 @@ module.exports = async function handler(req, res) {
 
   const story = sRes.status === "fulfilled" ? sRes.value : null;
 
+  const bewegungen = wRes.status === "fulfilled" ? wRes.value : [];
+  const dreher = bewegungen.length ? rundlaeufer(bewegungen) : null;
+  const wash = washUrteil(washFrei(normal || {}), dreher);
+
   const frei = normal ? freiesUrteil(normal) : { punkte: 50, ampel: "gelb", checks: [], schlecht: 0, offen: 0 };
-  const gesamt = gesamtUrteil(frei, bundle, story);
+  const gesamt = gesamtUrteil(frei, bundle, story, { wash: wash });
 
   // Zwoelf Stunden: die Launch-Daten sind fix. Die Marktzahlen in `coin`
   // sind es nicht - deshalb holt die Oberflaeche die weiter ueber
@@ -87,6 +98,8 @@ module.exports = async function handler(req, res) {
       coin: normal,
       bundle: bundle,
       story: story,
+      wash: wash,
+      dreher: dreher,
       urteil: gesamt,
     },
     1800,
