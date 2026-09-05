@@ -2252,6 +2252,77 @@ async function main() {
     assert.ok(/slice\(0,\s*3\)/.test(f.slice(0, 500)), "Deckel auf drei fehlt");
   });
 
+  await check("es gibt einen Weg aufs Handy, und der Token bleibt auf dem Server", () => {
+    const melde = require("fs").readFileSync(
+      require("path").join(__dirname, "..", "api", "melde.js"), "utf8");
+    assert.ok(/authorized\(req\)/.test(melde), "die Route ist ungeschuetzt");
+    assert.ok(/api\.telegram\.org/.test(melde));
+    assert.ok(/bremseFrei/.test(melde), "keine Bremse gegen Spam");
+    assert.ok(/replace\(\/</.test(melde) || /&lt;/.test(melde), "Text wird nicht maskiert");
+    // Der Token darf nirgends in der Oberflaeche auftauchen.
+    assert.ok(!/TELEGRAM_BOT_TOKEN\s*=/.test(appQuelle));
+    assert.ok(/function meldeAufsHandy/.test(appQuelle));
+  });
+
+  await check("die wichtigen Meldungen gehen wirklich raus", () => {
+    // Zusammenlauf und Zielerreichung sind die beiden, die dich
+    // erreichen muessen, wenn das Fenster zu ist.
+    const w = appQuelle.slice(appQuelle.indexOf("function werKauft"));
+    assert.ok(/meldeAufsHandy\(/.test(w.slice(0, 2500)), "Zusammenlauf geht nicht aufs Handy");
+    const b = appQuelle.slice(appQuelle.indexOf("function buchMelden"));
+    assert.ok(/meldeAufsHandy\(/.test(b.slice(0, 3000)), "Positionsmeldungen gehen nicht aufs Handy");
+  });
+
+  await check("das Tagebuch speichert das Urteil von damals mit", () => {
+    const f = appQuelle.slice(appQuelle.indexOf("function buchEintragen"));
+    const kopf = f.slice(0, 1200);
+    assert.ok(/punkte:/.test(kopf), "ohne die Punkte laesst sich spaeter nichts beweisen");
+    assert.ok(/ampel:/.test(kopf));
+    assert.ok(/mcap:/.test(kopf), "ohne Einstiegs-Marktwert fehlt der wichtigste Vergleich");
+  });
+
+  await check("die Bilanz vergleicht gruene Coins gegen den Rest", () => {
+    const f = appQuelle.slice(appQuelle.indexOf("function buchBilanz"));
+    const kopf = f.slice(0, 1600);
+    assert.ok(/punkte >= 62/.test(kopf), "es wird nicht nach Urteil getrennt");
+    assert.ok(/gruen:/.test(kopf) && /andere:/.test(kopf));
+    assert.ok(/genug:/.test(kopf), "es fehlt die Schwelle, ab der die Aussage traegt");
+  });
+
+  await check("die Auswertung darf auch gegen den Pruefstand ausfallen", () => {
+    // Ein Werkzeug, das sich selbst nur bestaetigen kann, misst nichts.
+    const r = appQuelle.slice(appQuelle.indexOf("function renderBuch"));
+    assert.ok(/sagen bisher nichts aus/.test(r.slice(0, 4000)),
+      "es gibt keinen Text fuer den Fall, dass die Punkte nichts taugen");
+  });
+
+  await check("offene Positionen werden verfolgt und melden sich", () => {
+    const f = appQuelle.slice(appQuelle.indexOf("function buchVerfolgen"));
+    const kopf = f.slice(0, 2600);
+    for (const fall of ["ziel", "rueck", "halb", "tot"]) {
+      assert.ok(kopf.indexOf("gemeldet." + fall) >= 0, "kein Fall fuer: " + fall);
+    }
+    assert.ok(/\/api\/quote\?mints=/.test(kopf), "die Verfolgung darf kein Guthaben kosten");
+    assert.ok(/setInterval\(buchVerfolgen/.test(appQuelle), "sie laeuft nie");
+  });
+
+  await check("jede Meldung kommt nur einmal", () => {
+    const f = appQuelle.slice(appQuelle.indexOf("function buchVerfolgen"));
+    assert.ok(/!p\.gemeldet\.ziel/.test(f.slice(0, 2600)), "das Ziel wuerde im Zweiminutentakt melden");
+  });
+
+  await check("Fabriken werden ueber Coins hinweg gemerkt", () => {
+    assert.ok(/function devsMerken/.test(appQuelle));
+    assert.ok(/function devBekannt/.test(appQuelle));
+    // Und die Adresse muss dafuer ueberhaupt mitkommen.
+    const frisch = require("fs").readFileSync(
+      require("path").join(__dirname, "..", "api", "frisch.js"), "utf8");
+    assert.ok(/devAddress: c\.devAddress/.test(frisch), "die Ersteller-Adresse geht gar nicht mit");
+    // Der eigene Coin ist keine Vorgeschichte.
+    const f = appQuelle.slice(appQuelle.indexOf("function devBekannt"));
+    assert.ok(/a !== c\.address/.test(f.slice(0, 600)), "zaehlt den aktuellen Coin als Vorgeschichte mit");
+  });
+
   await check("Marktzahlen kommen frisch, Launch-Daten aus dem Cache", () => {
     // Live gefunden: Kopfzeile 9,1k, Checkliste 3k. Die Tiefpruefung
     // liegt zwoelf Stunden im Cache - richtig fuer Launch und Story,
