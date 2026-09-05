@@ -1859,6 +1859,16 @@ async function main() {
     assert.ok(ps.freiesUrteil(c).punkte > ps.DECKEL_PUNKTE);
   });
 
+  await check("der Kurvenfortschritt wird nicht doppelt in Prozent gerechnet", () => {
+    const jupiter = require("../api/_lib/jupiter");
+    const asset = { id: MINT, name: "K", symbol: "K" };
+    // Anteil (0..1) wird hochgerechnet
+    assert.strictEqual(jupiter.normalize(asset, { bondingCurve: 0.8135 }).bondingCurvePct, 81.35);
+    // ein bereits fertiger Prozentwert bleibt, wie er ist
+    assert.strictEqual(jupiter.normalize(asset, { bondingCurve: 81.35 }).bondingCurvePct, 81.35);
+    assert.strictEqual(jupiter.normalize(asset, null).bondingCurvePct, null);
+  });
+
   await check("0% organisch bei einem zwei Minuten alten Coin heisst noch nicht, nicht null", () => {
     const z = ps.freiesUrteil(Object.assign({}, guterCoin, { organicShareH1: 0, ageMinutes: 2 }))
       .checks.find((x) => x.schluessel === "echt");
