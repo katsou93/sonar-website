@@ -1802,6 +1802,63 @@ async function main() {
     assert.strictEqual(z.stufe, "schlecht");
   });
 
+  // Drei Fehler, die erst im Livebetrieb sichtbar wurden. Ab hier
+  // festgenagelt, damit sie nicht zurueckkommen.
+
+  await check("null Prozent Top-Halter bei drei Haltern heisst unbekannt, nicht gut gestreut", () => {
+    const z = ps.freiesUrteil(Object.assign({}, guterCoin, { topHoldersPct: 0, holderCount: 3 }))
+      .checks.find((x) => x.schluessel === "verteilung");
+    assert.strictEqual(z.stufe, "unbekannt");
+    assert.ok(/noch gar nichts/.test(z.text));
+  });
+
+  await check("518 Starts mit 3 Erfolgen ist eine Fabrik, kein Koennen", () => {
+    const z = ps.freiesUrteil(Object.assign({}, guterCoin, { devMints: 518, devMigrations: 3 }))
+      .checks.find((x) => x.schluessel === "dev");
+    assert.strictEqual(z.stufe, "schlecht");
+    assert.ok(/Fabrik/.test(z.text));
+  });
+
+  await check("vier Starts mit zwei Erfolgen bleibt gutes Handwerk", () => {
+    const z = ps.freiesUrteil(Object.assign({}, guterCoin, { devMints: 4, devMigrations: 2 }))
+      .checks.find((x) => x.schluessel === "dev");
+    assert.strictEqual(z.stufe, "gut");
+  });
+
+  await check("der Halter-Zuwachs wird gerundet und als Prozent ausgewiesen", () => {
+    const z = ps.freiesUrteil(Object.assign({}, guterCoin, { holderChangeH1: 206.15384615384613 }))
+      .checks.find((x) => x.schluessel === "halter");
+    assert.ok(/206%/.test(z.text), "erwartet '206%', bekommen: " + z.text);
+    assert.ok(!/206\.15/.test(z.text));
+  });
+
+  await check("ein zwei Minuten alter Coin mit drei Haltern kommt nicht auf 100", () => {
+    const duenn = {
+      address: MINT, name: "Duenn", symbol: "D",
+      marketCap: 2900, liquidityUsd: 3100, topHoldersPct: 0,
+      organicShareH1: null, buysH1: 3, sellsH1: 1, netBuyersH1: 2,
+      holderCount: 3, holderChangeH1: null, devMints: 1, devMigrations: 0,
+      mintAuthorityActive: false, freezeAuthorityActive: false,
+      twitter: "https://x.com/a", ageMinutes: 2,
+    };
+    const u = ps.freiesUrteil(duenn);
+    assert.ok(u.punkte <= ps.DECKEL_PUNKTE, "Punkte: " + u.punkte);
+    assert.notStrictEqual(u.ampel, "gruen");
+    assert.ok(u.checks.some((z) => z.schluessel === "substanz"));
+  });
+
+  await check("der Deckel greift nicht bei einem Coin mit echter Substanz", () => {
+    assert.strictEqual(ps.substanzMangel(guterCoin).length, 0);
+    assert.strictEqual(ps.freiesUrteil(guterCoin).ampel, "gruen");
+  });
+
+  await check("ein einzelner Mangel deckelt noch nicht", () => {
+    // Nur wenig Halter, aber Pool, Alter und Handel sind da.
+    const c = Object.assign({}, guterCoin, { holderCount: 20 });
+    assert.strictEqual(ps.substanzMangel(c).length, 1);
+    assert.ok(ps.freiesUrteil(c).punkte > ps.DECKEL_PUNKTE);
+  });
+
   await check("der Platz nach oben rechnet gegen das beobachtete Gipfelfenster", () => {
     const p = ps.platzNachOben(20000);
     assert.strictEqual(Math.round(p.bisTypisch), 9);
