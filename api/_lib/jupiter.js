@@ -166,7 +166,14 @@ function normalize(asset, pool) {
     website: asset.website || null,
     telegram: asset.telegram || null,
 
-    bondingCurvePct: pool && typeof pool.bondingCurve === "number" ? pool.bondingCurve * 100 : null,
+    // Jupiter liefert den Kurvenfortschritt mal als Anteil (0,81), mal
+    // schon als Prozentwert (81,35) - live stand deshalb "Kurve 8135%"
+    // in der Liste. Ein Anteil ist nie groesser als 1, ein Prozentwert
+    // fast immer; daran lassen sich die beiden sicher unterscheiden.
+    bondingCurvePct:
+      pool && typeof pool.bondingCurve === "number"
+        ? (pool.bondingCurve <= 1 ? pool.bondingCurve * 100 : pool.bondingCurve)
+        : null,
     dexUrl: "https://dexscreener.com/solana/" + asset.id,
     pumpUrl: "https://pump.fun/coin/" + asset.id,
   };
