@@ -2252,6 +2252,27 @@ async function main() {
     assert.ok(/slice\(0,\s*3\)/.test(f.slice(0, 500)), "Deckel auf drei fehlt");
   });
 
+  await check("hoechstens zwoelf Serverless-Funktionen", () => {
+    // Der Fehler, der fuenf Commits lang unsichtbar blieb: Vercel
+    // erlaubt im kostenlosen Tarif zwoelf Funktionen. Bei dreizehn
+    // schlaegt nicht eine Route fehl, sondern das ganze Deployment -
+    // und die Seite laeuft unveraendert weiter, waehrend GitHub den
+    // Commit gruen anzeigt. Ab hier faellt das im Test auf.
+    const fs = require("fs"), path = require("path");
+    const dir = path.join(__dirname, "..", "api");
+    const fn = fs.readdirSync(dir).filter((f) => f.endsWith(".js"));
+    assert.ok(fn.length <= 12, fn.length + " Funktionen (" + fn.join(", ") + ") - Vercel nimmt hoechstens 12");
+  });
+
+  await check("die Kaeuferpruefung haengt an der Tiefpruefung, nicht an einer eigenen Route", () => {
+    assert.ok(/\/api\/tief\?was=kaeufer/.test(appQuelle));
+    assert.ok(!/\/api\/kaeufer\?/.test(appQuelle), "ruft noch die geloeschte Route auf");
+    const tief = require("fs").readFileSync(
+      require("path").join(__dirname, "..", "api", "tief.js"), "utf8");
+    assert.ok(/was === "kaeufer"/.test(tief));
+    assert.ok(/was === "crowd"/.test(tief));
+  });
+
   await check("gute Kaeufer landen automatisch im Bestand", () => {
     assert.ok(/function rosterAusKaeufer/.test(appQuelle));
     const f = appQuelle.slice(appQuelle.indexOf("function rosterAusKaeufer"));
@@ -2331,7 +2352,7 @@ async function main() {
   await check("es gibt einen eigenen Knopf fuer die Kaeuferpruefung", () => {
     assert.ok(/data-pf-wer/.test(appQuelle));
     assert.ok(/function werKauft/.test(appQuelle));
-    assert.ok(/\/api\/kaeufer\?mint=/.test(appQuelle));
+    assert.ok(/\/api\/tief\?was=kaeufer&mint=/.test(appQuelle));
   });
 
   await check("jede Wallet wird nur einmal geprueft", () => {
