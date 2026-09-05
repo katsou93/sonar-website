@@ -1441,6 +1441,457 @@ async function main() {
     assert.strictEqual(typeof wl.winners, "function");
   });
 
+  // ---------------------------------------------------------------
+  // Launch-Forensik: Bundles und zusammenhaengende Wallets
+  // ---------------------------------------------------------------
+  console.log("\nBundle-Erkennung");
+  const bu = require("../api/_lib/bundle");
+
+  const M2 = "Mint2222222222222222222222222222222222222222";
+  const CURVE = "Curve111111111111111111111111111111111111111";
+  const DEV = "Dev11111111111111111111111111111111111111111";
+  const SUPPLY = 1000000000;
+
+  function btx(sig, slot, zeit, zahler, transfers, native) {
+    return {
+      signature: sig,
+      slot: slot,
+      timestamp: zeit,
+      feePayer: zahler,
+      tokenTransfers: transfers || [],
+      nativeTransfers: native || [],
+    };
+  }
+  function gibt(von, an, menge) {
+    return { mint: M2, fromUserAccount: von, toUserAccount: an, tokenAmount: menge };
+  }
+  function zahlt(von, sol) {
+    return [{ fromUserAccount: von, toUserAccount: CURVE, amount: Math.round(sol * 1e9) }];
+  }
+
+  await check("die Bonding Curve wird nicht als Kaeufer gezaehlt", () => {
+    const txs = [
+      btx("c", 100, 1000, DEV, [gibt(null, CURVE, SUPPLY)]),
+      btx("b1", 100, 1000, "A", [gibt(CURVE, "A", 1000)], zahlt("A", 0.5)),
+      btx("b2", 101, 1002, "B", [gibt(CURVE, "B", 900)], zahlt("B", 0.5)),
+      btx("b3", 102, 1004, "C", [gibt(CURVE, "C", 800)], zahlt("C", 0.5)),
+    ];
+    const k = bu.kaeufeAus(txs, M2, SUPPLY);
+    const wallets = k.map((x) => x.wallet);
+    assert.ok(wallets.indexOf(CURVE) < 0, "Curve steht faelschlich in der Kaeuferliste");
+    assert.deepStrictEqual(wallets.sort(), ["A", "B", "C"]);
+  });
+
+  await check("die Erstbefuellung faellt ueber die Supply-Grenze heraus", () => {
+    // Nur die Erstellung, sonst nichts: hier greift die Absender-Regel
+    // noch nicht, weil die Kurve noch nie etwas abgegeben hat.
+    const txs = [btx("c", 100, 1000, DEV, [gibt(null, CURVE, SUPPLY * 0.9)])];
+    assert.strictEqual(bu.kaeufeAus(txs, M2, SUPPLY).length, 0);
+  });
+
+  await check("ein Entwickler, der spaeter verkauft, bleibt Kaeufer", () => {
+    const txs = [
+      btx("c", 100, 1000, DEV, [gibt(null, CURVE, SUPPLY)]),
+      btx("d", 100, 1000, DEV, [gibt(CURVE, DEV, 5000)], zahlt(DEV, 1)),
+      btx("b1", 101, 1010, "A", [gibt(CURVE, "A", 1000)], zahlt("A", 0.3)),
+      btx("b2", 102, 1020, "B", [gibt(CURVE, "B", 1000)], zahlt("B", 0.3)),
+      btx("s", 200, 2000, DEV, [gibt(DEV, CURVE, 5000)]),
+    ];
+    const k = bu.kaeufeAus(txs, M2, SUPPLY);
+    assert.ok(k.some((x) => x.wallet === DEV), "Dev-Kauf wurde vom eigenen Verkauf verschluckt");
+  });
+
+  await check("geteilte Transfers in einer Transaktion zaehlen als ein Kauf", () => {
+    const txs = [
+      btx("c", 100, 1000, DEV, [gibt(null, CURVE, SUPPLY)]),
+      btx("b", 100, 1000, "A", [gibt(CURVE, "A", 600), gibt(CURVE, "A", 400)], zahlt("A", 0.5)),
+      btx("x", 101, 1001, "B", [gibt(CURVE, "B", 10)]),
+      btx("y", 102, 1002, "C", [gibt(CURVE, "C", 10)]),
+    ];
+    const k = bu.kaeufeAus(txs, M2, SUPPLY).filter((x) => x.wallet === "A");
+    assert.strictEqual(k.length, 1);
+    assert.strictEqual(k[0].tokens, 1000);
+  });
+
+  await check("der abgegebene SOL-Betrag wird der Wallet zugeordnet", () => {
+    const txs = [
+      btx("c", 100, 1000, DEV, [gibt(null, CURVE, SUPPLY)]),
+      btx("b", 100, 1000, "A", [gibt(CURVE, "A", 1000)], zahlt("A", 0.4321)),
+      btx("x", 101, 1001, "B", [gibt(CURVE, "B", 10)]),
+      btx("y", 102, 1002, "C", [gibt(CURVE, "C", 10)]),
+    ];
+    const k = bu.kaeufeAus(txs, M2, SUPPLY).find((x) => x.wallet === "A");
+    assert.strictEqual(k.sol, 0.4321);
+  });
+
+  await check("ein fremder Gebuehrenzahler verbindet Wallets", () => {
+    const kaeufe = [
+      { wallet: "A", zahler: "P", tokens: 10, sol: 0.5 },
+      { wallet: "B", zahler: "P", tokens: 10, sol: 0.5 },
+      { wallet: "C", zahler: "P", tokens: 10, sol: 0.5 },
+      { wallet: "D", zahler: "D", tokens: 10, sol: 0.5 },
+    ];
+    const c = bu.zahlerCluster(kaeufe);
+    assert.strictEqual(c.length, 1);
+    assert.strictEqual(c[0].zahler, "P");
+    assert.strictEqual(c[0].anzahl, 3);
+  });
+
+  await check("wer sich selbst bezahlt, bildet kein Cluster", () => {
+    const kaeufe = [
+      { wallet: "A", zahler: "A", tokens: 10, sol: 0.5 },
+      { wallet: "B", zahler: "B", tokens: 10, sol: 0.5 },
+    ];
+    assert.strictEqual(bu.zahlerCluster(kaeufe).length, 0);
+  });
+
+  await check("drei identische Betraege sind ein Skript", () => {
+    const kaeufe = [
+      { wallet: "A", zahler: "A", tokens: 1, sol: 0.4321 },
+      { wallet: "B", zahler: "B", tokens: 1, sol: 0.4321 },
+      { wallet: "C", zahler: "C", tokens: 1, sol: 0.4321 },
+      { wallet: "D", zahler: "D", tokens: 1, sol: 0.9 },
+    ];
+    const c = bu.betragCluster(kaeufe);
+    assert.strictEqual(c.length, 1);
+    assert.strictEqual(c[0].anzahl, 3);
+  });
+
+  await check("zwei gleiche Betraege sind noch Zufall", () => {
+    const kaeufe = [
+      { wallet: "A", zahler: "A", tokens: 1, sol: 0.5 },
+      { wallet: "B", zahler: "B", tokens: 1, sol: 0.5 },
+    ];
+    assert.strictEqual(bu.betragCluster(kaeufe).length, 0);
+  });
+
+  await check("Centbetraege bilden kein Betrags-Cluster", () => {
+    const kaeufe = [0, 1, 2, 3].map((i) => ({ wallet: "W" + i, zahler: "W" + i, tokens: 1, sol: 0.002 }));
+    assert.strictEqual(bu.betragCluster(kaeufe).length, 0);
+  });
+
+  const basis = {
+    bundleWallets: 0, bundleAnteil: null, zahlerCluster: [], betragCluster: [],
+    devAnteil: null, bundleNochDrin: 0, bundleNochDrinAnteil: null,
+    holderGeprueft: false, sniperWallets: 0,
+  };
+
+  await check("ein Viertel des Vorrats im Erstell-Block ist gebuendelt", () => {
+    const u = bu.urteilen(Object.assign({}, basis, { bundleWallets: 8, bundleAnteil: 30 }));
+    assert.strictEqual(u.stufe, "gebuendelt");
+  });
+
+  await check("fuenfzehn Prozent im Erstell-Block sind auffaellig", () => {
+    const u = bu.urteilen(Object.assign({}, basis, { bundleWallets: 4, bundleAnteil: 15 }));
+    assert.strictEqual(u.stufe, "auffaellig");
+  });
+
+  await check("ein offener Start bleibt sauber", () => {
+    const u = bu.urteilen(Object.assign({}, basis, { bundleWallets: 0, bundleAnteil: null }));
+    assert.strictEqual(u.stufe, "sauber");
+    assert.ok(/offen/i.test(u.gruende.join(" ")));
+  });
+
+  await check("drei Prozent im Erstell-Block sind auszuhalten", () => {
+    const u = bu.urteilen(Object.assign({}, basis, { bundleWallets: 2, bundleAnteil: 3 }));
+    assert.strictEqual(u.stufe, "sauber");
+  });
+
+  await check("ein Zahler fuer vier Wallets sticht alles andere", () => {
+    const u = bu.urteilen(Object.assign({}, basis, {
+      zahlerCluster: [{ zahler: "P", wallets: ["A", "B", "C", "D"], anzahl: 4 }],
+    }));
+    assert.strictEqual(u.stufe, "gebuendelt");
+  });
+
+  await check("ein Ersteller mit zwanzig Prozent ist gebuendelt", () => {
+    const u = bu.urteilen(Object.assign({}, basis, { devAnteil: 20 }));
+    assert.strictEqual(u.stufe, "gebuendelt");
+  });
+
+  await check("viele Sniper allein sind nur auffaellig", () => {
+    const u = bu.urteilen(Object.assign({}, basis, { sniperWallets: 12 }));
+    assert.strictEqual(u.stufe, "auffaellig");
+  });
+
+  await check("Bundle-Wallets, die noch oben stehen, zaehlen gegen den Coin", () => {
+    const u = bu.urteilen(Object.assign({}, basis, {
+      bundleWallets: 5, bundleAnteil: 6, bundleNochDrin: 4, bundleNochDrinAnteil: 25, holderGeprueft: true,
+    }));
+    assert.strictEqual(u.stufe, "gebuendelt");
+  });
+
+  await check("ohne Helius-Schluessel meldet die Launch-Pruefung das ehrlich", async () => {
+    const alt = process.env.HELIUS_API_KEY;
+    delete process.env.HELIUS_API_KEY;
+    const r = await bu.bundleAnalyse(M2);
+    if (alt) process.env.HELIUS_API_KEY = alt;
+    assert.strictEqual(r.verfuegbar, false);
+    assert.strictEqual(r.stufe, "unbekannt");
+    assert.ok(/Helius/.test(r.grund));
+  });
+
+  // ---------------------------------------------------------------
+  // Story: Beschreibung und X-Link
+  // ---------------------------------------------------------------
+  console.log("\nStory und Aussenauftritt");
+  const st = require("../api/_lib/story");
+
+  await check("ein Link auf einen einzelnen Beitrag ist ein Beleg", () => {
+    const t = st.twitterArt("https://x.com/echterkerl/status/1234567890");
+    assert.strictEqual(t.art, "beitrag");
+    assert.strictEqual(t.handle, "echterkerl");
+  });
+
+  await check("ein Profil-Link ist nur eine Behauptung", () => {
+    assert.strictEqual(st.twitterArt("https://twitter.com/irgendwer").art, "profil");
+  });
+
+  await check("eine Suchseite heisst: es gibt kein Konto", () => {
+    const t = st.twitterArt("https://x.com/search?q=%24TEST");
+    assert.strictEqual(t.art, "suche");
+    assert.strictEqual(t.handle, null);
+  });
+
+  await check("kein Link ist kein Link", () => {
+    assert.strictEqual(st.twitterArt("").art, "keiner");
+    assert.strictEqual(st.twitterArt(null).art, "keiner");
+  });
+
+  await check("ein X-Link, der nicht zu X zeigt, faellt auf", () => {
+    assert.strictEqual(st.twitterArt("https://tw1tter-login.com/abc").art, "fremd");
+  });
+
+  await check("Adressen ohne Schema werden trotzdem gelesen", () => {
+    assert.strictEqual(st.twitterArt("x.com/wer/status/99").art, "beitrag");
+  });
+
+  await check("eine leere Beschreibung wird als leer erkannt", () => {
+    const b = st.beschreibungPruefen("");
+    assert.strictEqual(b.hat, false);
+  });
+
+  await check("reine Floskeln zaehlen nicht als Story", () => {
+    const b = st.beschreibungPruefen("the first meme coin on solana. community takeover. to the moon. wagmi");
+    assert.ok(b.eigen < 4, "Floskeltext hat zu viele eigene Woerter: " + b.eigen);
+    assert.ok(/Floskel/.test(b.text));
+  });
+
+  await check("ein eigener Text wird als eigener Text erkannt", () => {
+    const b = st.beschreibungPruefen(
+      "Eine Ziege mit Myotonie faellt um sobald sie sich aufregt und steht Sekunden spaeter wieder auf.",
+    );
+    assert.ok(b.eigen >= 8, "zu wenige eigene Woerter: " + b.eigen);
+  });
+
+  await check("ein Tagesbegriff im Coin-Namen wird gefunden", () => {
+    const tr = st.themaTreffer(
+      { name: "Fainting Goat", symbol: "FAINT" },
+      [{ wort: "goat", gewicht: 300 }, { wort: "unrelated", gewicht: 900 }],
+    );
+    assert.strictEqual(tr.length, 1);
+    assert.strictEqual(tr[0].wort, "goat");
+  });
+
+  await check("Suchlink ohne Beschreibung ergibt ein leeres Urteil", () => {
+    const u = st.storyUrteil(
+      { name: "Test", symbol: "T", twitter: "https://x.com/search?q=test" },
+      { beschreibung: "", unbekannt: false }, [], null,
+    );
+    assert.strictEqual(u.stufe, "leer");
+  });
+
+  await check("Beitrag plus eigener Text plus Tagesthema ergibt stark", () => {
+    const u = st.storyUrteil(
+      { name: "Fainting Goat", symbol: "FAINT", twitter: "https://x.com/wer/status/1" },
+      {
+        beschreibung: "Eine Ziege mit Myotonie faellt um sobald sie sich aufregt und steht wieder auf.",
+        unbekannt: false,
+      },
+      [{ wort: "goat", gewicht: 300 }], null,
+    );
+    assert.strictEqual(u.stufe, "stark");
+  });
+
+  await check("ein wiederverwendetes X-Konto kostet Punkte", () => {
+    const coin = { address: "neu", name: "Test", symbol: "T", twitter: "https://x.com/recycler" };
+    const ohne = st.storyUrteil(coin, { beschreibung: "x", unbekannt: false }, [], null);
+    const mit = st.storyUrteil(coin, { beschreibung: "x", unbekannt: false }, [], {
+      recycler: { coins: ["alt1", "alt2", "alt3"] },
+    });
+    assert.ok(mit.punkte < ohne.punkte);
+    assert.strictEqual(mit.handleWiederverwendet, 3);
+  });
+
+  await check("eine nicht abrufbare Beschreibung wird nicht bestraft wie eine fehlende", () => {
+    const coin = { name: "T", symbol: "T", twitter: "https://x.com/wer" };
+    const unbekannt = st.storyUrteil(coin, { unbekannt: true }, [], null);
+    const fehlend = st.storyUrteil(coin, { beschreibung: "", unbekannt: false }, [], null);
+    assert.ok(unbekannt.punkte > fehlend.punkte);
+  });
+
+  // ---------------------------------------------------------------
+  // Pruefstand: die Checkliste
+  // ---------------------------------------------------------------
+  console.log("\nPruefstand");
+  const ps = require("../api/_lib/pruefstand");
+
+  const guterCoin = {
+    address: MINT, name: "Gut", symbol: "GUT",
+    marketCap: 20000, liquidityUsd: 30000, topHoldersPct: 12,
+    organicShareH1: 0.8, buysH1: 200, sellsH1: 100, netBuyersH1: 40,
+    holderCount: 300, holderChangeH1: 50, devMints: 3, devMigrations: 2,
+    mintAuthorityActive: false, freezeAuthorityActive: false,
+    twitter: "https://x.com/a", telegram: "https://t.me/a", ageMinutes: 45,
+  };
+
+  await check("ein sauberer frischer Coin kommt gruen durch", () => {
+    const u = ps.freiesUrteil(guterCoin);
+    assert.strictEqual(u.ampel, "gruen");
+    assert.strictEqual(u.checks.length, 10);
+  });
+
+  await check("aktive Nachdruck-Rechte machen alles andere egal", () => {
+    const u = ps.freiesUrteil(Object.assign({}, guterCoin, { mintAuthorityActive: true }));
+    assert.strictEqual(u.ampel, "rot");
+  });
+
+  await check("jede Zeile sagt, ob sie Beweis oder Hinweis ist", () => {
+    const u = ps.freiesUrteil(guterCoin);
+    for (const z of u.checks) assert.strictEqual(typeof z.beweis, "boolean");
+    const v = u.checks.find((z) => z.schluessel === "verteilung");
+    assert.strictEqual(v.beweis, false, "die freie Verteilung darf sich nicht als Beweis ausgeben");
+    const r = u.checks.find((z) => z.schluessel === "rechte");
+    assert.strictEqual(r.beweis, true);
+  });
+
+  await check("bei 300k Marktwert ist der Fuenffacher rechnerisch durch", () => {
+    const u = ps.freiesUrteil(Object.assign({}, guterCoin, { marketCap: 300000 }));
+    const z = u.checks.find((x) => x.schluessel === "platz");
+    assert.strictEqual(z.stufe, "schlecht");
+    assert.ok(/Ausgang/.test(z.text));
+  });
+
+  await check("bei 20k Marktwert passt der Fuenffacher locker", () => {
+    const z = ps.freiesUrteil(guterCoin).checks.find((x) => x.schluessel === "platz");
+    assert.strictEqual(z.stufe, "gut");
+  });
+
+  await check("ein Pool unter 5k macht den Ausstieg zum Problem", () => {
+    const z = ps.freiesUrteil(Object.assign({}, guterCoin, { liquidityUsd: 3000 }))
+      .checks.find((x) => x.schluessel === "ausstieg");
+    assert.strictEqual(z.stufe, "schlecht");
+  });
+
+  await check("zehn Starts ohne eine einzige Graduierung ist Serienbetrieb", () => {
+    const z = ps.freiesUrteil(Object.assign({}, guterCoin, { devMints: 14, devMigrations: 0 }))
+      .checks.find((x) => x.schluessel === "dev");
+    assert.strictEqual(z.stufe, "schlecht");
+    assert.ok(/Serienbetrieb/.test(z.text));
+  });
+
+  await check("mehr Verkaeufer als Kaeufer wird benannt", () => {
+    const z = ps.freiesUrteil(Object.assign({}, guterCoin, { netBuyersH1: -5 }))
+      .checks.find((x) => x.schluessel === "fluss");
+    assert.strictEqual(z.stufe, "schlecht");
+  });
+
+  await check("Bot-Karussell wird als solches benannt", () => {
+    const z = ps.freiesUrteil(Object.assign({}, guterCoin, { organicShareH1: 0.1 }))
+      .checks.find((x) => x.schluessel === "echt");
+    assert.strictEqual(z.stufe, "schlecht");
+  });
+
+  await check("der Platz nach oben rechnet gegen das beobachtete Gipfelfenster", () => {
+    const p = ps.platzNachOben(20000);
+    assert.strictEqual(Math.round(p.bisTypisch), 9);
+    assert.strictEqual(ps.platzNachOben(0), null);
+  });
+
+  await check("ein bewiesenes Bundle sticht jede gute Zahl", () => {
+    const frei = ps.freiesUrteil(guterCoin);
+    const g = ps.gesamtUrteil(frei, { verfuegbar: true, stufe: "gebuendelt", gruende: ["30% im Block eins"] }, null);
+    assert.strictEqual(g.ampel, "rot");
+    assert.strictEqual(g.gebuendelt, true);
+  });
+
+  await check("ein offener Start verbessert das Urteil", () => {
+    // Bewusst ein mittelmaessiger Coin: bei einem sehr guten liegt die
+    // freie Ebene schon an der 100 an, und dann ist nicht messbar, ob
+    // die Launch-Pruefung ueberhaupt etwas beitraegt.
+    const mittel = {
+      address: MINT, name: "Mittel", symbol: "MID",
+      marketCap: 150000, liquidityUsd: 8000, topHoldersPct: 25,
+      organicShareH1: 0.35, buysH1: 100, sellsH1: 95, netBuyersH1: 3,
+      holderCount: 60, holderChangeH1: 5, devMints: 3, devMigrations: 0,
+      mintAuthorityActive: false, freezeAuthorityActive: false,
+      twitter: "https://x.com/a", ageMinutes: 200,
+    };
+    const frei = ps.freiesUrteil(mittel);
+    assert.ok(frei.punkte < 80, "Testcoin ist zu gut, der Zuschlag waere nicht messbar");
+    const ohne = ps.gesamtUrteil(frei, { verfuegbar: false, stufe: "unbekannt", gruende: [] }, null);
+    const mit = ps.gesamtUrteil(frei, { verfuegbar: true, stufe: "sauber", gruende: ["Start war offen."] }, null);
+    assert.ok(mit.punkte > ohne.punkte);
+  });
+
+  await check("die Tiefpruefung haengt hinten an der Checkliste", () => {
+    const frei = ps.freiesUrteil(guterCoin);
+    const g = ps.gesamtUrteil(frei, { verfuegbar: true, stufe: "sauber", gruende: ["offen"] }, {
+      punkte: 80, stufe: "stark", gruende: ["Beitrag verlinkt"],
+    });
+    const s = g.checks.map((z) => z.schluessel);
+    assert.ok(s.indexOf("bundle") >= 0 && s.indexOf("story") >= 0);
+    assert.strictEqual(s[s.length - 1], "story");
+  });
+
+  // ---------------------------------------------------------------
+  // Verdrahtung der Oberflaeche
+  // ---------------------------------------------------------------
+  console.log("\nOberflaeche: Pruefstand ist verdrahtet");
+  const appQuelle = require("fs").readFileSync(
+    require("path").join(__dirname, "..", "app.html"), "utf8");
+
+  await check("der Pruefstand ist der erste Tab", () => {
+    const tabs = appQuelle.match(/data-view="([a-z]+)"/g) || [];
+    assert.strictEqual(tabs[0], 'data-view="pruef"');
+  });
+
+  await check("beim Start ist der Pruefstand offen und Jetzt zu", () => {
+    assert.ok(/class="view on" id="view-pruef"/.test(appQuelle));
+    assert.ok(/class="view" id="view-jetzt"/.test(appQuelle));
+  });
+
+  await check("nach dem Login wird der Pruefstand geladen", () => {
+    const unlock = appQuelle.slice(appQuelle.indexOf("function unlock()"));
+    assert.ok(/ladePruefstand\(\)/.test(unlock.slice(0, 500)));
+  });
+
+  await check("die Heute-Seite legt die Tagesbegriffe fuer den Pruefstand ab", () => {
+    assert.ok(/sonar_heute_begriffe/.test(appQuelle));
+    assert.ok(/function pfBegriffe/.test(appQuelle));
+  });
+
+  await check("die Karten haben Stile fuer alle drei Ampelfarben", () => {
+    for (const k of [".pfcard.a-gruen", ".pfcard.a-gelb", ".pfcard.a-rot"]) {
+      assert.ok(appQuelle.indexOf(k) >= 0, "fehlt: " + k);
+    }
+  });
+
+  await check("Beweis und Hinweis sind optisch unterscheidbar", () => {
+    assert.ok(appQuelle.indexOf(".art-beweis") >= 0);
+    assert.ok(appQuelle.indexOf(".art-hinweis") >= 0);
+  });
+
+  await check("die automatische Tiefpruefung ist auf drei Coins gedeckelt", () => {
+    const f = appQuelle.slice(appQuelle.indexOf("function pfAutoTief"));
+    assert.ok(/slice\(0,\s*3\)/.test(f.slice(0, 500)), "Deckel auf drei fehlt");
+  });
+
+  await check("jeder Coin wird nur einmal tief geprueft", () => {
+    const f = appQuelle.slice(appQuelle.indexOf("function tiefPruefen"));
+    assert.ok(/if\(PF\.tief\[mint\]\)\s*return;/.test(f.slice(0, 300)));
+  });
+
   console.log(failures === 0 ? "\nAlle Tests bestanden.\n" : "\n" + failures + " Test(s) fehlgeschlagen.\n");
   process.exit(failures === 0 ? 0 : 1);
 }
