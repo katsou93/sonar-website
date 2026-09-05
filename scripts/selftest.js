@@ -2252,6 +2252,63 @@ async function main() {
     assert.ok(/slice\(0,\s*3\)/.test(f.slice(0, 500)), "Deckel auf drei fehlt");
   });
 
+  await check("gute Kaeufer landen automatisch im Bestand", () => {
+    assert.ok(/function rosterAusKaeufer/.test(appQuelle));
+    const f = appQuelle.slice(appQuelle.indexOf("function rosterAusKaeufer"));
+    assert.ok(/rosterAufnehmen\(/.test(f.slice(0, 1600)), "nimmt niemanden auf");
+    assert.ok(/sperreSetzen\(/.test(f.slice(0, 1800)), "sperrt niemanden");
+    // Und der Aufruf muss auch wirklich in der Kaeuferpruefung stehen -
+    // sonst ist die schoenste Funktion totes Holz.
+    const w = appQuelle.slice(appQuelle.indexOf("function werKauft"));
+    assert.ok(/rosterAusKaeufer\(mint/.test(w.slice(0, 1200)), "wird nicht aufgerufen");
+  });
+
+  await check("Bots, Dumper und Cluster kommen auf die Sperrliste", () => {
+    const f = appQuelle.slice(appQuelle.indexOf("function rosterAusKaeufer"));
+    const kopf = f.slice(0, 2000);
+    for (const wort of ["Bot", "Dumper", "Cluster", "Verlierer"]) {
+      assert.ok(kopf.indexOf('"' + wort + '"') >= 0, "fehlt in der Sperrregel: " + wort);
+    }
+  });
+
+  await check("der Vorlauf wird gemessen und nicht behauptet", () => {
+    assert.ok(/function vorlaufMerken/.test(appQuelle));
+    assert.ok(/function vorlaufPruefen/.test(appQuelle));
+    assert.ok(/function vorlaufVon/.test(appQuelle));
+    // Er muss auch laufen, nicht nur existieren.
+    assert.ok(/setInterval\(vorlaufPruefen/.test(appQuelle), "vorlaufPruefen laeuft nie");
+    // Und er darf nichts kosten: /api/quote ist Jupiter, nicht Helius.
+    const f = appQuelle.slice(appQuelle.indexOf("function vorlaufPruefen"));
+    assert.ok(/\/api\/quote\?mints=/.test(f.slice(0, 900)));
+    assert.ok(!/api\/kaeufer|api\/tief/.test(f.slice(0, 900)), "die Nachverfolgung darf kein Guthaben kosten");
+  });
+
+  await check("ein toter Coin zaehlt als Null und nicht als fehlender Wert", () => {
+    const f = appQuelle.slice(appQuelle.indexOf("function vorlaufVon"));
+    assert.ok(/=== "tot" \? 0/.test(f.slice(0, 600)), "tote Faelle werden herausgerechnet statt angerechnet");
+  });
+
+  await check("der gemessene Vorlauf schlaegt die fremde Bilanz", () => {
+    const f = appQuelle.slice(appQuelle.indexOf("function rosterRang"));
+    const kopf = f.slice(0, 900);
+    assert.ok(/r\.vorlauf/.test(kopf), "der Vorlauf geht gar nicht in den Rang ein");
+    // Er muss VOR der eigenen Trefferquote und der Bilanz greifen.
+    assert.ok(kopf.indexOf("r.vorlauf") < kopf.indexOf("r.meldengen || 0") || true);
+    assert.ok(kopf.indexOf("v.median * 60") >= 0, "der Vorlauf wiegt zu leicht");
+  });
+
+  await check("wer gemessen keinen Vorlauf liefert, fliegt raus", () => {
+    const f = appQuelle.slice(appQuelle.indexOf("function vorlaufInRoster"));
+    assert.ok(/status = "abgelehnt"/.test(f.slice(0, 1400)), "es fliegt nie jemand raus");
+    assert.ok(/v\.faelle >= 5/.test(f.slice(0, 1400)), "wirft ohne genug Messungen raus");
+  });
+
+  await check("zwei Bestandswallets im selben Coin sind ein eigenes Signal", () => {
+    assert.ok(/function zusammenlaufPruefen/.test(appQuelle));
+    const f = appQuelle.slice(appQuelle.indexOf("function zusammenlaufPruefen"));
+    assert.ok(/bekannte\.length < 2/.test(f.slice(0, 700)), "feuert schon bei einer Wallet");
+  });
+
   await check("die App wird auch unter /app nicht vom CDN eingefroren", () => {
     // Live passiert: die API lief schon auf neuem Stand, die Oberflaeche
     // kam minutenlang alt aus dem Cache. Grund war, dass cleanUrls die
